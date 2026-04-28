@@ -6,7 +6,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/sarjet': 'http://localhost:8080',
-      '/zes':    'http://localhost:8080'
+      '/zes':    'http://localhost:8080',
+      '/astor':  'http://localhost:8080'
     }
   }
 })

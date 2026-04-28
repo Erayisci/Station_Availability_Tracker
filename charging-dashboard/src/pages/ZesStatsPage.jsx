@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchZesConnectorTransformTimeSlot, fetchZesByCityDuration, fetchZesEnvDistribution, fetchZesEnvTimeSlot } from '../api/zesApi';
+import { fetchZesConnectorTransformTimeSlot, fetchZesConnectorTransformTimeline, fetchZesByCityDuration, fetchZesEnvDistribution, fetchZesEnvTimeSlot } from '../api/zesApi';
 import TimeSlotChart          from '../components/TimeSlotChart';
+import TimelineChart          from '../components/TimelineChart';
 import CityDurationChart      from '../components/CityDurationChart';
 import EnvDistributionChart   from '../components/EnvDistributionChart';
 import EnvTimeSlotChart       from '../components/EnvTimeSlotChart';
@@ -11,6 +12,7 @@ export default function ZesStatsPage({ date, onDateChange }) {
   const [chartIndex,          setChartIndex]          = useState(0);
 
   const [timeSlotData,     setTimeSlotData]     = useState(null);
+  const [timelineData,     setTimelineData]     = useState(null);
   const [cityDurationData, setCityDurationData] = useState(null);
   const [envDistData,      setEnvDistData]      = useState(null);
   const [envTimeSlotData,  setEnvTimeSlotData]  = useState(null);
@@ -21,13 +23,15 @@ export default function ZesStatsPage({ date, onDateChange }) {
     setLoading(true);
     setError(null);
     try {
-      const [ts, city, envDist, envTs] = await Promise.all([
+      const [ts, tl, city, envDist, envTs] = await Promise.all([
         fetchZesConnectorTransformTimeSlot({ date, intervalMinutes, connectorType: connectorTypeFilter || undefined }),
+        fetchZesConnectorTransformTimeline({ date, connectorType: connectorTypeFilter || undefined }),
         fetchZesByCityDuration({ date }),
         fetchZesEnvDistribution(),
         fetchZesEnvTimeSlot({ date, intervalMinutes, connectorType: connectorTypeFilter || undefined }),
       ]);
       setTimeSlotData(ts);
+      setTimelineData(tl);
       setCityDurationData(city);
       setEnvDistData(envDist);
       setEnvTimeSlotData(envTs);
@@ -44,6 +48,10 @@ export default function ZesStatsPage({ date, onDateChange }) {
     {
       title: `Zaman Dilimlerine Göre Konnektör Durumu (${intervalMinutes} dk aralık)`,
       node: <TimeSlotChart data={timeSlotData} />,
+    },
+    {
+      title: 'Sürekli Zaman — Konnektör Durumu (event-stream)',
+      node: <TimelineChart data={timelineData} />,
     },
     {
       title: 'İle Göre Toplam Süre Dağılımı (saat) — Top 20',

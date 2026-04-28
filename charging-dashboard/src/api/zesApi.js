@@ -24,6 +24,11 @@ export function fetchZesConnectorTransformTimeSlot({ date, intervalMinutes = 30,
   return fetchJson(`${BASE}/connector-transform/stats/by-time-slot${q ? '?' + q : ''}`);
 }
 
+export function fetchZesConnectorTransformTimeline({ date, province, connectorType } = {}) {
+  const q = toQuery({ date, province, connectorType });
+  return fetchJson(`${BASE}/connector-transform/stats/timeline${q ? '?' + q : ''}`);
+}
+
 export function fetchZesByConnectorType({ date } = {}) {
   const q = toQuery({ date });
   return fetchJson(`${BASE}/stats/by-connector-type${q ? '?' + q : ''}`);
@@ -56,4 +61,28 @@ export function fetchZesEnvDistribution() {
 export function fetchZesEnvTimeSlot({ date, intervalMinutes = 30, province, connectorType } = {}) {
   const q = toQuery({ date, intervalMinutes, province, connectorType });
   return fetchJson(`${BASE}/connector-transform/stats/by-env-timeslot${q ? '?' + q : ''}`);
+}
+
+export function fetchStationPerformanceRecommendationDistribution({ date } = {}) {
+  const q = toQuery({ date });
+  return fetchJson(`${BASE}/station-performance/stats/recommendation-distribution${q ? '?' + q : ''}`);
+}
+
+export function fetchStationPerformanceDemandSupplyMatrix({ date } = {}) {
+  const q = toQuery({ date });
+  return fetchJson(`${BASE}/station-performance/stats/demand-supply-matrix${q ? '?' + q : ''}`);
+}
+
+export function fetchStationPerformanceUnderutilized({ date, size = 20 } = {}) {
+  const q = toQuery({ date, size });
+  return fetchJson(`${BASE}/station-performance/underutilized${q ? '?' + q : ''}`);
+}
+
+export function fetchStationPerformanceSearch({
+  date, demandTier, supplyTier, recommendationCode, cityName, stationName,
+  minUtilizationPct, maxUtilizationPct, sort, order = 'desc', from = 0, size = 20,
+} = {}) {
+  const q = toQuery({ date, demandTier, supplyTier, recommendationCode, cityName, stationName,
+    minUtilizationPct, maxUtilizationPct, sort, order, from, size });
+  return fetchJson(`${BASE}/station-performance/search${q ? '?' + q : ''}`);
 }

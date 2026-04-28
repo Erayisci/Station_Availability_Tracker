@@ -1,6 +1,7 @@
 package com.charging.zes.scheduler;
 
 import com.charging.zes.elastic.ZesConnectorTransformService;
+import com.charging.zes.elastic.ZesStationPerformanceIndexService;
 import com.charging.zes.service.ZesStatusTrackerService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,6 +18,9 @@ public class ZesScheduler {
 
     @Autowired
     private ZesConnectorTransformService connectorTransformService;
+
+    @Autowired
+    private ZesStationPerformanceIndexService performanceIndexService;
 
     @Scheduled(fixedRateString = "${zes.poll.intervalMs:300000}")
     public void pollZes() {
@@ -39,6 +43,10 @@ public class ZesScheduler {
             System.out.println("[ZES DAILY TRANSFORM] Rebuilding zes_connector_transform index...");
             int connectorCount = connectorTransformService.transformConnectors(date);
             System.out.printf("[ZES DAILY TRANSFORM] zes_connector_transform-%s finalized: %d connector docs.%n", date, connectorCount);
+
+            System.out.println("[ZES DAILY PERFORMANCE] Building zes_station_performance index...");
+            int performanceCount = performanceIndexService.buildPerformanceIndex(date, 1.0);
+            System.out.printf("[ZES DAILY PERFORMANCE] zes_station_performance-%s finalized: %d station docs.%n", date, performanceCount);
         } catch (Exception e) {
             System.err.printf("[ZES DAILY INDEX ERROR] %s%n", e.getMessage());
         }

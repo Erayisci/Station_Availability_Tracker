@@ -3,6 +3,7 @@ import {
 } from 'recharts';
 
 const STATUS_COLORS = {
+  // ZES — PascalCase
   Available:     '#4ade80',
   Charging:      '#f87171',
   Unavailable:   '#94a3b8',
@@ -12,6 +13,11 @@ const STATUS_COLORS = {
   Finishing:     '#facc15',
   Faulted:       '#ef4444',
   Reserved:      '#a78bfa',
+  // ASTOR — lowercase
+  available:     '#4ade80',
+  inUse:         '#38bdf8',
+  faulted:       '#ef4444',
+  offline:       '#475569',
 };
 
 function colorFor(status) {

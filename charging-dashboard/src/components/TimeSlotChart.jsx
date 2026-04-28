@@ -4,6 +4,7 @@ import {
 } from 'recharts';
 
 const STATUS_COLORS = {
+  // ZES — PascalCase
   Available:     '#4ade80',
   Charging:      '#f87171',
   Unavailable:   '#94a3b8',
@@ -13,10 +14,17 @@ const STATUS_COLORS = {
   Finishing:     '#facc15',
   Faulted:       '#ef4444',
   Reserved:      '#a78bfa',
+  // ASTOR — lowercase
+  available:     '#4ade80',
+  charging:      '#38bdf8',
+  faulted:       '#ef4444',
+  offline:       '#475569',
+  unavailable:   '#94a3b8',
 };
 
-function colorFor(status) {
-  return STATUS_COLORS[status] ?? '#64748b';
+function makeColorFor(overrides = {}) {
+  const merged = { ...STATUS_COLORS, ...overrides };
+  return (status) => merged[status] ?? '#64748b';
 }
 
 function transformData(raw) {
@@ -29,8 +37,9 @@ function transformData(raw) {
   return { entries, statuses: Array.from(allStatuses) };
 }
 
-export default function TimeSlotChart({ data }) {
+export default function TimeSlotChart({ data, colors }) {
   const [hidden, setHidden] = useState(new Set());
+  const colorFor = useMemo(() => makeColorFor(colors), [colors]);
 
   const { entries, statuses } = useMemo(() => {
     if (!data) return { entries: [], statuses: [] };
@@ -80,8 +89,8 @@ export default function TimeSlotChart({ data }) {
           <defs>
             {visible.map(s => (
               <linearGradient key={s} id={`grad-${s}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor={colorFor(s)} stopOpacity={0.4} />
-                <stop offset="95%" stopColor={colorFor(s)} stopOpacity={0.05} />
+                <stop offset="5%"  stopColor={colorFor(s)} stopOpacity={0.75} />
+                <stop offset="95%" stopColor={colorFor(s)} stopOpacity={0.45} />
               </linearGradient>
             ))}
           </defs>
@@ -99,6 +108,7 @@ export default function TimeSlotChart({ data }) {
               key={s}
               type="monotone"
               dataKey={s}
+              stackId="status"
               stroke={colorFor(s)}
               fill={`url(#grad-${s})`}
               strokeWidth={2}
