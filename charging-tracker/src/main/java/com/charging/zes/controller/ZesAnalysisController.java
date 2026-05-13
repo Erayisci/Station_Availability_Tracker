@@ -2,6 +2,7 @@ package com.charging.zes.controller;
 
 import com.charging.zes.elastic.ZesAnalysisService;
 import com.charging.zes.elastic.ZesConnectorTransformAnalysisService;
+import com.charging.zes.elastic.ZesConnectorTransformService;
 import com.charging.zes.elastic.ZesEnvironmentAnalysisService;
 import com.charging.zes.elastic.ZesStationPerformanceIndexService;
 import com.charging.zes.elastic.ZesStationPerformanceQueryService;
@@ -9,6 +10,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -16,11 +20,15 @@ import java.util.Map;
 @RequestMapping("/zes/availability")
 public class ZesAnalysisController {
 
-    @Autowired
-    private ZesAnalysisService analysisService;
+    // Removed: analysisService (methods removed as unused)
+    // @Autowired
+    // private ZesAnalysisService analysisService;
 
     @Autowired
     private ZesConnectorTransformAnalysisService transformAnalysisService;
+
+    @Autowired
+    private ZesConnectorTransformService connectorTransformService;
 
     @Autowired
     private ZesEnvironmentAnalysisService envAnalysisService;
@@ -31,26 +39,9 @@ public class ZesAnalysisController {
     @Autowired
     private ZesStationPerformanceQueryService performanceQueryService;
 
-    @GetMapping("/stats/by-connector-type")
-    public Map<String, Map<String, Long>> statsByConnectorType(
-            @RequestParam(name = "date", required = false) String date) throws IOException {
-        return analysisService.statusByConnectorType(date);
-    }
-
-    @GetMapping("/stats/by-province")
-    public Map<String, Map<String, Long>> statsByProvince(
-            @RequestParam(name = "date", required = false) String date) throws IOException {
-        return analysisService.statusByProvince(date);
-    }
-
-    @GetMapping("/stats/by-time-slot")
-    public Map<String, Map<String, Long>> statsByTimeSlot(
-            @RequestParam(name = "date",            required = false)  String date,
-            @RequestParam(name = "intervalMinutes", defaultValue = "30") int intervalMinutes,
-            @RequestParam(name = "province",        required = false)  String province,
-            @RequestParam(name = "connectorType",   required = false)  String connectorType) throws IOException {
-        return analysisService.statusByTimeSlot(date, intervalMinutes, province, connectorType);
-    }
+    // Removed: /stats/by-connector-type (unused by UI)
+    // Removed: /stats/by-province (unused by UI)
+    // Removed: /stats/by-time-slot (duplicate - use /connector-transform/stats/by-time-slot instead)
 
     @GetMapping("/connector-transform/stats/by-city")
     public Map<String, Map<String, Double>> connectorTransformByCity(
@@ -194,16 +185,95 @@ public class ZesAnalysisController {
         return performanceQueryService.demandSupplyMatrix(date);
     }
 
-    @GetMapping("/search")
-    public List<Map<String, Object>> search(
-            @RequestParam(name = "date",          required = false)    String date,
-            @RequestParam(name = "province",      required = false)    String province,
-            @RequestParam(name = "connectorType", required = false)    String connectorType,
-            @RequestParam(name = "status",        required = false)    String status,
-            @RequestParam(name = "from",          defaultValue = "0")  int from,
-            @RequestParam(name = "size",          defaultValue = "20") int size,
-            @RequestParam(name = "sort",          required = false)    String sort,
-            @RequestParam(name = "order",         defaultValue = "asc") String order) throws IOException {
-        return analysisService.searchStations(date, province, connectorType, status, from, size, sort, order);
+    // Removed: /search (unused by UI - use /connector-transform/search instead)
+
+    // ── Backfill Mechanism ────────────────────────────────────────────────────
+
+    /**
+     * Backfills missing performance indexes for a date range.
+     * Only creates indexes where connector_transform exists but performance is missing.
+     *
+     * POST /zes/availability/station-performance/backfill
+     *   ?startDate=2026-04-01&endDate=2026-05-14&radius=1.0
+     *
+     * Response:
+     * {
+     *   "requested_range": { "start": "2026-04-01", "end": "2026-05-14" },
+     *   "total_dates": 44,
+     *   "skipped": 10,      // connector_transform missing
+     *   "existing": 5,      // performance index already exists
+     *   "built": 29,        // newly created
+     *   "failed": 0,
+     *   "details": [
+     *     { "date": "2026-04-01", "status": "BUILT", "stations": 1818 },
+     *     { "date": "2026-04-02", "status": "SKIPPED", "reason": "connector_transform missing" },
+     *     ...
+     *   ]
+     * }
+     */
+    @PostMapping("/station-performance/backfill")
+    public Map<String, Object> backfillPerformanceIndex(
+            @RequestParam(name = "startDate") String startDate,
+            @RequestParam(name = "endDate")   String endDate,
+            @RequestParam(name = "radius", defaultValue = "1.0") double radius) {
+
+        LocalDate start = LocalDate.parse(startDate);
+        LocalDate end   = LocalDate.parse(endDate);
+
+        List<Map<String, Object>> details = new ArrayList<>();
+        int skipped = 0, existing = 0, built = 0, failed = 0;
+
+        for (LocalDate date = start; !date.isAfter(end); date = date.plusDays(1)) {
+            String dateStr = date.toString();
+            Map<String, Object> result = new HashMap<>();
+            result.put("date", dateStr);
+
+            try {
+                // Check if connector_transform exists
+                boolean hasConnectorTransform =
+                    connectorTransformService.indexExists(dateStr);
+
+                if (!hasConnectorTransform) {
+                    result.put("status", "SKIPPED");
+                    result.put("reason", "connector_transform index missing");
+                    skipped++;
+                    details.add(result);
+                    continue;
+                }
+
+                // Check if performance index already exists
+                if (performanceIndexService.indexExists(dateStr)) {
+                    result.put("status", "EXISTING");
+                    existing++;
+                    details.add(result);
+                    continue;
+                }
+
+                // Build performance index
+                int count = performanceIndexService.buildPerformanceIndex(dateStr, radius);
+                result.put("status", "BUILT");
+                result.put("stations", count);
+                built++;
+                details.add(result);
+
+            } catch (Exception e) {
+                result.put("status", "FAILED");
+                result.put("error", e.getMessage());
+                failed++;
+                details.add(result);
+            }
+        }
+
+        long totalDates = java.time.temporal.ChronoUnit.DAYS.between(start, end) + 1;
+
+        return Map.of(
+            "requested_range", Map.of("start", startDate, "end", endDate),
+            "total_dates", totalDates,
+            "skipped", skipped,
+            "existing", existing,
+            "built", built,
+            "failed", failed,
+            "details", details
+        );
     }
 }

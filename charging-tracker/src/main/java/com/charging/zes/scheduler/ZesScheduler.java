@@ -44,11 +44,65 @@ public class ZesScheduler {
             int connectorCount = connectorTransformService.transformConnectors(date);
             System.out.printf("[ZES DAILY TRANSFORM] zes_connector_transform-%s finalized: %d connector docs.%n", date, connectorCount);
 
-            System.out.println("[ZES DAILY PERFORMANCE] Building zes_station_performance index...");
-            int performanceCount = performanceIndexService.buildPerformanceIndex(date, 1.0);
-            System.out.printf("[ZES DAILY PERFORMANCE] zes_station_performance-%s finalized: %d station docs.%n", date, performanceCount);
+            // Performance index will be auto-built at 00:15 (see autoBuildPerformanceIndex below)
+            System.out.println("[ZES DAILY] Daily finalization complete. Performance index will be built at 00:15.");
         } catch (Exception e) {
             System.err.printf("[ZES DAILY INDEX ERROR] %s%n", e.getMessage());
+        }
+    }
+
+    /**
+     * Automatically builds performance index for previous day at 00:15.
+     * Runs after daily finalization (23:59) to ensure connector_transform is ready.
+     *
+     * This scheduler:
+     * - Checks if connector_transform index exists for yesterday
+     * - Skips if performance index already exists (idempotent)
+     * - Builds performance index with 1.0km radius
+     * - Logs success/failure for monitoring
+     */
+    @Scheduled(cron = "${zes.performance.autoBuildCron:0 15 0 * * *}")  // 00:15:00 daily
+    public void autoBuildPerformanceIndex() {
+        LocalDate yesterday = LocalDate.now().minusDays(1);
+        String date = yesterday.toString();
+
+        try {
+            // Check if connector_transform index exists
+            if (!connectorTransformService.indexExists(date)) {
+                System.err.printf(
+                    "[PERF AUTO-BUILD SKIP] connector_transform-%s does not exist%n",
+                    date
+                );
+                return;
+            }
+
+            // Check if performance index already exists (idempotent)
+            if (performanceIndexService.indexExists(date)) {
+                System.out.printf(
+                    "[PERF AUTO-BUILD SKIP] performance-%s already exists%n",
+                    date
+                );
+                return;
+            }
+
+            System.out.printf(
+                "[PERF AUTO-BUILD START] Building performance index for %s%n",
+                date
+            );
+
+            int count = performanceIndexService.buildPerformanceIndex(date, 1.0);
+
+            System.out.printf(
+                "[PERF AUTO-BUILD DONE] %d stations indexed for %s%n",
+                count, date
+            );
+
+        } catch (Exception e) {
+            System.err.printf(
+                "[PERF AUTO-BUILD ERROR] %s — %s%n",
+                date, e.getMessage()
+            );
+            e.printStackTrace();
         }
     }
 }

@@ -22,52 +22,55 @@ export default function ZesStatsPage({ date, onDateChange }) {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const [ts, tl, city, envDist, envTs] = await Promise.all([
-        fetchZesConnectorTransformTimeSlot({ date, intervalMinutes, connectorType: connectorTypeFilter || undefined }),
-        fetchZesConnectorTransformTimeline({ date, connectorType: connectorTypeFilter || undefined }),
-        fetchZesByCityDuration({ date }),
-        fetchZesEnvDistribution(),
-        fetchZesEnvTimeSlot({ date, intervalMinutes, connectorType: connectorTypeFilter || undefined }),
-      ]);
-      setTimeSlotData(ts);
-      setTimelineData(tl);
-      setCityDurationData(city);
-      setEnvDistData(envDist);
-      setEnvTimeSlotData(envTs);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+    const results = await Promise.allSettled([
+      fetchZesConnectorTransformTimeSlot({ date, intervalMinutes, connectorType: connectorTypeFilter || undefined }),
+      fetchZesConnectorTransformTimeline({ date, connectorType: connectorTypeFilter || undefined }),
+      fetchZesByCityDuration({ date }),
+      fetchZesEnvDistribution(),
+      fetchZesEnvTimeSlot({ date, intervalMinutes, connectorType: connectorTypeFilter || undefined }),
+    ]);
+    const [ts, tl, city, envDist, envTs] = results.map(r => r.status === 'fulfilled' ? r.value : null);
+    setTimeSlotData(ts);
+    setTimelineData(tl);
+    setCityDurationData(city);
+    setEnvDistData(envDist);
+    setEnvTimeSlotData(envTs);
+    const allFailed = results.every(r => r.status === 'rejected');
+    if (allFailed) setError(`Bu tarih için veri bulunamadı (${date}).`);
+    setLoading(false);
   }, [date, intervalMinutes, connectorTypeFilter]);
 
   useEffect(() => { load(); }, [load]);
 
+  const withFallback = (data, node) =>
+    data == null
+      ? <div className="loading">Bu tarih için veri bulunamadı ({date}).</div>
+      : node;
+
   const charts = [
     {
       title: `Zaman Dilimlerine Göre Konnektör Durumu (${intervalMinutes} dk aralık)`,
-      node: <TimeSlotChart data={timeSlotData} />,
+      node: withFallback(timeSlotData, <TimeSlotChart data={timeSlotData} />),
     },
     {
       title: 'Sürekli Zaman — Konnektör Durumu (event-stream)',
-      node: <TimelineChart data={timelineData} />,
+      node: withFallback(timelineData, <TimelineChart data={timelineData} />),
     },
     {
       title: 'İle Göre Toplam Süre Dağılımı (saat) — Top 20',
-      node: <CityDurationChart data={cityDurationData} />,
+      node: withFallback(cityDurationData, <CityDurationChart data={cityDurationData} />),
     },
     {
       title: 'İstasyon Çevre Tipi Dağılımı',
-      node: <EnvDistributionChart data={envDistData} />,
+      node: withFallback(envDistData, <EnvDistributionChart data={envDistData} />),
     },
     {
       title: `Çevre Tipine Göre Doluluk Oranı % (${intervalMinutes} dk aralık)`,
-      node: <EnvTimeSlotChart data={envTimeSlotData} percent={true} />,
+      node: withFallback(envTimeSlotData, <EnvTimeSlotChart data={envTimeSlotData} percent={true} />),
     },
     {
       title: `Çevre Tipine Göre Soket Sayısı — Mutlak (${intervalMinutes} dk aralık)`,
-      node: <EnvTimeSlotChart data={envTimeSlotData} percent={false} />,
+      node: withFallback(envTimeSlotData, <EnvTimeSlotChart data={envTimeSlotData} percent={false} />),
     },
   ];
 

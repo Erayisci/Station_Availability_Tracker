@@ -4,6 +4,8 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.json.JsonData;
 import co.elastic.clients.json.jackson.JacksonJsonpMapper;
 import co.elastic.clients.transport.rest_client.RestClientTransport;
+import com.charging.model.ConnectorStatusHistory;
+import com.charging.repository.ConnectorStatusHistoryRepository;
 import jakarta.annotation.PreDestroy;
 import org.apache.http.HttpHost;
 import org.elasticsearch.client.RestClient;
@@ -34,6 +36,9 @@ public class ZesConnectorTransformAnalysisService {
     @Autowired
     private ZesEnvironmentAnalysisService envAnalysisService;
 
+    @Autowired
+    private ConnectorStatusHistoryRepository historyRepository;
+
     public ZesConnectorTransformAnalysisService() {
         restClient = RestClient.builder(new HttpHost("localhost", 9200)).build();
         RestClientTransport transport = new RestClientTransport(restClient, new JacksonJsonpMapper());
@@ -54,6 +59,21 @@ public class ZesConnectorTransformAnalysisService {
     @SuppressWarnings("unchecked")
     public Map<String, Map<String, Long>> statusByTimeSlot(
             String date, int intervalMinutes, String connectorType, String province) throws IOException {
+
+        // Prefer H2 polling history when available and no filters are set.
+        // H2 holds the authoritative raw polling slots for the retention window
+        // (default 7 days). The daily ES transform can lag or be incomplete if
+        // polling started late in the day, so H2 gives a truer picture for
+        // recent dates. Filters (connectorType/province) are not on H2 rows,
+        // so filtered queries always go through ES.
+        LocalDate today = LocalDate.now();
+        LocalDate target = (date != null) ? LocalDate.parse(date) : today;
+        if (connectorType == null && province == null) {
+            List<ConnectorStatusHistory> rows = historyRepository.findByTrackDate(target);
+            if (!rows.isEmpty()) {
+                return statusByTimeSlotFromH2(target, intervalMinutes, rows);
+            }
+        }
 
         String indexName = indexForDate(date);
 
@@ -253,6 +273,53 @@ public class ZesConnectorTransformAnalysisService {
         }
 
         return timeline;
+    }
+
+    /**
+     * Build the time-slot snapshot directly from H2 polling history.
+     * For today, emits slots up to the current minute (no future slots) and
+     * treats open slices (end_time = null) as ongoing through "now".
+     * For past dates, emits all 24h and treats open slices as ongoing through
+     * end-of-day.
+     */
+    private Map<String, Map<String, Long>> statusByTimeSlotFromH2(
+            LocalDate date, int intervalMinutes, List<ConnectorStatusHistory> rows) {
+
+        boolean isToday = date.equals(LocalDate.now());
+        int upperMin     = isToday ? minutesOfDay(LocalDateTime.now()) : 24 * 60 - 1;
+        int openSliceEnd = isToday ? upperMin + 1                      : 24 * 60;
+
+        Map<String, Map<String, Long>> result = new LinkedHashMap<>();
+        List<String> allSlots = new ArrayList<>();
+        for (int t = 0; t < 24 * 60 && t <= upperMin; t += intervalMinutes) {
+            String label = formatSlot(t, intervalMinutes);
+            allSlots.add(label);
+            result.put(label, new LinkedHashMap<>());
+        }
+        if (allSlots.isEmpty()) return result;
+
+        Map<String, List<ConnectorStatusHistory>> byConnector = rows.stream()
+                .collect(Collectors.groupingBy(ConnectorStatusHistory::getConnectorId));
+
+        for (Map.Entry<String, List<ConnectorStatusHistory>> entry : byConnector.entrySet()) {
+            Map<String, String> slotStatus = new HashMap<>();
+            for (ConnectorStatusHistory row : entry.getValue()) {
+                if (row.getStatus() == null || row.getStartTime() == null) continue;
+                int startMin = minutesOfDay(row.getStartTime());
+                int endMin   = row.getEndTime() != null
+                        ? minutesOfDay(row.getEndTime())
+                        : openSliceEnd;
+                int firstSlot = (startMin / intervalMinutes) * intervalMinutes;
+                for (int T = firstSlot; T < endMin && T <= upperMin; T += intervalMinutes) {
+                    slotStatus.putIfAbsent(formatSlot(T, intervalMinutes), row.getStatus());
+                }
+            }
+            for (String slot : allSlots) {
+                String status = slotStatus.getOrDefault(slot, "Unknown");
+                result.get(slot).merge(status, 1L, Long::sum);
+            }
+        }
+        return result;
     }
 
     private int minutesOfDay(LocalDateTime dt) {

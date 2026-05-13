@@ -14,10 +14,7 @@ async function fetchJson(url) {
   return res.json();
 }
 
-export function fetchZesTimeSlot({ date, intervalMinutes = 30, province, connectorType } = {}) {
-  const q = toQuery({ date, intervalMinutes, province, connectorType });
-  return fetchJson(`${BASE}/stats/by-time-slot${q ? '?' + q : ''}`);
-}
+// Removed: fetchZesTimeSlot (duplicate - use fetchZesConnectorTransformTimeSlot instead)
 
 export function fetchZesConnectorTransformTimeSlot({ date, intervalMinutes = 30, province, connectorType } = {}) {
   const q = toQuery({ date, intervalMinutes, province, connectorType });
@@ -29,25 +26,15 @@ export function fetchZesConnectorTransformTimeline({ date, province, connectorTy
   return fetchJson(`${BASE}/connector-transform/stats/timeline${q ? '?' + q : ''}`);
 }
 
-export function fetchZesByConnectorType({ date } = {}) {
-  const q = toQuery({ date });
-  return fetchJson(`${BASE}/stats/by-connector-type${q ? '?' + q : ''}`);
-}
-
-export function fetchZesByProvince({ date } = {}) {
-  const q = toQuery({ date });
-  return fetchJson(`${BASE}/stats/by-province${q ? '?' + q : ''}`);
-}
+// Removed: fetchZesByConnectorType (unused by UI)
+// Removed: fetchZesByProvince (unused by UI)
 
 export function fetchZesByCityDuration({ date } = {}) {
   const q = toQuery({ date });
   return fetchJson(`${BASE}/connector-transform/stats/by-city${q ? '?' + q : ''}`);
 }
 
-export function fetchZesSearch({ date, province, connectorType, status, from = 0, size = 20, sort = 'name', order = 'asc' } = {}) {
-  const q = toQuery({ date, province, connectorType, status, from, size, sort, order });
-  return fetchJson(`${BASE}/search${q ? '?' + q : ''}`);
-}
+// Removed: fetchZesSearch (unused by UI - use fetchZesConnectorSearch instead)
 
 export function fetchZesConnectorSearch({ date, province, connectorType, status, time, address, envType, from = 0, size = 20 } = {}) {
   const q = toQuery({ date, province, connectorType, status, time, address, envType, from, size });

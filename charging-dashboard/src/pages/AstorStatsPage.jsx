@@ -24,35 +24,38 @@ export default function AstorStatsPage({ date, onDateChange }) {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const [ts, loc] = await Promise.all([
-        fetchAstorTimeSlot({
-          date,
-          intervalMinutes,
-          tenantCode:           tenantFilter          || undefined,
-          connectorCurrentType: connectorTypeFilter   || undefined,
-        }),
-        fetchAstorByLocation({ date }),
-      ]);
-      setTimeSlotData(ts);
-      setLocationData(loc);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+    const results = await Promise.allSettled([
+      fetchAstorTimeSlot({
+        date,
+        intervalMinutes,
+        tenantCode:           tenantFilter          || undefined,
+        connectorCurrentType: connectorTypeFilter   || undefined,
+      }),
+      fetchAstorByLocation({ date }),
+    ]);
+    const [ts, loc] = results.map(r => r.status === 'fulfilled' ? r.value : null);
+    setTimeSlotData(ts);
+    setLocationData(loc);
+    const allFailed = results.every(r => r.status === 'rejected');
+    if (allFailed) setError(`Bu tarih için veri bulunamadı (${date}).`);
+    setLoading(false);
   }, [date, intervalMinutes, tenantFilter, connectorTypeFilter]);
 
   useEffect(() => { load(); }, [load]);
 
+  const withFallback = (data, node) =>
+    data == null
+      ? <div className="loading">Bu tarih için veri bulunamadı ({date}).</div>
+      : node;
+
   const charts = [
     {
       title: `Zaman Dilimlerine Göre İstasyon Durumu (${intervalMinutes} dk aralık)`,
-      node:  <TimeSlotChart data={timeSlotData} colors={ASTOR_COLORS} />,
+      node:  withFallback(timeSlotData, <TimeSlotChart data={timeSlotData} colors={ASTOR_COLORS} />),
     },
     {
       title: 'İl Koduna Göre Toplam Süre Dağılımı (saat) — Top 20',
-      node:  <CityDurationChart data={locationData} />,
+      node:  withFallback(locationData, <CityDurationChart data={locationData} />),
     },
   ];
 

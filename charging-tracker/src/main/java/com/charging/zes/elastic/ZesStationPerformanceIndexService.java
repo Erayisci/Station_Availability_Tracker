@@ -370,6 +370,18 @@ public class ZesStationPerformanceIndexService {
     private double round1(double v) { return Math.round(v * 10.0)  / 10.0; }
     private double round2(double v) { return Math.round(v * 100.0) / 100.0; }
 
+    /**
+     * Checks if the station_performance index exists for a given date.
+     *
+     * @param date Date string (YYYY-MM-DD) or null for today
+     * @return true if index exists, false otherwise
+     */
+    public boolean indexExists(String date) throws IOException {
+        String indexName = TARGET_PREFIX + "-" +
+            (date != null ? date : LocalDate.now().toString());
+        return client.indices().exists(r -> r.index(indexName)).value();
+    }
+
     @PreDestroy
     public void close() throws IOException {
         restClient.close();

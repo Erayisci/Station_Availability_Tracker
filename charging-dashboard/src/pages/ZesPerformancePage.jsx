@@ -9,6 +9,7 @@ import {
   fetchStationPerformanceUnderutilized,
   fetchStationPerformanceSearch,
 } from '../api/zesApi';
+import PerformanceBackfillModal from '../components/PerformanceBackfillModal';
 
 // ── Renk paleti ──────────────────────────────────────────────────────────────
 
@@ -381,6 +382,9 @@ export default function ZesPerformancePage({ date, onDateChange }) {
   const [statsError,    setStatsError]    = useState(null);
   const [chartIndex,    setChartIndex]    = useState(0);
 
+  // ── Backfill modal ────────────────────────────────────────────────────────
+  const [showBackfillModal, setShowBackfillModal] = useState(false);
+
   // ── Search ────────────────────────────────────────────────────────────────
   const [filters, setFilters] = useState({
     demandTier: '', supplyTier: '', recommendationCode: '',
@@ -491,6 +495,21 @@ export default function ZesPerformancePage({ date, onDateChange }) {
           <input type="date" value={date} onChange={e => onDateChange(e.target.value)} />
           <button onClick={loadStats} disabled={statsLoading}>
             {statsLoading ? 'Yükleniyor…' : 'Yenile'}
+          </button>
+          <button
+            onClick={() => setShowBackfillModal(true)}
+            style={{
+              background: '#3b82f6',
+              color: '#fff',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: 6,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            📊 Index Senkronize Et
           </button>
         </div>
       </div>
@@ -625,6 +644,13 @@ export default function ZesPerformancePage({ date, onDateChange }) {
           </div>
           <SearchResultTable rows={searchResults} />
         </div>
+      )}
+
+      {/* ── Backfill Modal ──────────────────────────────────────────────── */}
+      {showBackfillModal && (
+        <PerformanceBackfillModal
+          onClose={() => setShowBackfillModal(false)}
+        />
       )}
     </>
   );
