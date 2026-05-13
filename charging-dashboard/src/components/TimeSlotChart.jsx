@@ -1,120 +1,241 @@
 import { useState, useMemo } from 'react';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 
-const STATUS_COLORS = {
-  // ZES — PascalCase
-  Available:     '#4ade80',
-  Charging:      '#f87171',
-  Unavailable:   '#94a3b8',
-  SuspendedEV:   '#fb923c',
-  SuspendedEVSE: '#c084fc',
-  Preparing:     '#38bdf8',
-  Finishing:     '#facc15',
-  Faulted:       '#ef4444',
-  Reserved:      '#a78bfa',
-  // ASTOR — lowercase
-  available:     '#4ade80',
-  charging:      '#38bdf8',
-  faulted:       '#ef4444',
-  offline:       '#475569',
-  unavailable:   '#94a3b8',
+// Charging-focused color scheme (monochrome + single accent)
+const CHARGING_COLORS = {
+  Charging: '#10b981',  // Primary accent - emerald
+  charging: '#10b981',  // ASTOR variant
+  Other: '#475569',     // Muted gray for non-charging states
 };
 
-function makeColorFor(overrides = {}) {
-  const merged = { ...STATUS_COLORS, ...overrides };
-  return (status) => merged[status] ?? '#64748b';
-}
-
-function transformData(raw) {
+function transformData(raw, chargingOnly = true) {
   const allStatuses = new Set();
   const entries = Object.entries(raw).map(([time, counts]) => {
-    Object.keys(counts).forEach(s => allStatuses.add(s));
-    return { time, ...counts };
+    if (chargingOnly) {
+      // Aggregate all non-Charging states into "Other"
+      const chargingCount = counts.Charging || counts.charging || 0;
+      const otherCount = Object.entries(counts)
+        .filter(([status]) => status !== 'Charging' && status !== 'charging')
+        .reduce((sum, [, count]) => sum + count, 0);
+
+      return {
+        time,
+        Charging: chargingCount,
+        Other: otherCount,
+        Total: chargingCount + otherCount,
+      };
+    } else {
+      Object.keys(counts).forEach(s => allStatuses.add(s));
+      return { time, ...counts };
+    }
   });
+
   entries.sort((a, b) => a.time.localeCompare(b.time));
-  return { entries, statuses: Array.from(allStatuses) };
+  return {
+    entries,
+    statuses: chargingOnly ? ['Charging', 'Other'] : Array.from(allStatuses)
+  };
 }
 
-export default function TimeSlotChart({ data, colors }) {
-  const [hidden, setHidden] = useState(new Set());
-  const colorFor = useMemo(() => makeColorFor(colors), [colors]);
+export default function TimeSlotChart({ data, colors, showChargingOnly = true }) {
+  const [viewMode, setViewMode] = useState('area'); // 'area' or 'line'
 
   const { entries, statuses } = useMemo(() => {
     if (!data) return { entries: [], statuses: [] };
-    return transformData(data);
-  }, [data]);
+    return transformData(data, showChargingOnly);
+  }, [data, showChargingOnly]);
 
   if (!data) return <div className="loading">Yükleniyor…</div>;
   if (entries.length === 0) return <div className="loading">Veri yok</div>;
 
-  function toggle(status) {
-    setHidden(prev => {
-      const next = new Set(prev);
-      next.has(status) ? next.delete(status) : next.add(status);
-      return next;
-    });
-  }
-
-  const visible = statuses.filter(s => !hidden.has(s));
+  const ChartComponent = viewMode === 'area' ? AreaChart : LineChart;
 
   return (
     <div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        {statuses.map(s => (
+      {/* View mode toggle */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 'var(--space-4)'
+      }}>
+        <div style={{
+          display: 'flex',
+          gap: 'var(--space-2)',
+          background: 'var(--bg-tertiary)',
+          padding: 'var(--space-1)',
+          borderRadius: 'var(--radius-sm)',
+          border: '1px solid var(--border-subtle)'
+        }}>
           <button
-            key={s}
-            onClick={() => toggle(s)}
+            onClick={() => setViewMode('area')}
             style={{
-              padding: '3px 10px',
-              borderRadius: 999,
-              border: `2px solid ${colorFor(s)}`,
-              background: hidden.has(s) ? 'transparent' : colorFor(s) + '33',
-              color: hidden.has(s) ? '#64748b' : colorFor(s),
-              cursor: 'pointer',
-              fontSize: 12,
+              padding: 'var(--space-1) var(--space-3)',
+              border: 'none',
+              borderRadius: 'var(--radius-sm)',
+              background: viewMode === 'area' ? 'var(--accent-primary)' : 'transparent',
+              color: viewMode === 'area' ? '#fff' : 'var(--text-muted)',
+              fontSize: 'var(--text-xs)',
               fontWeight: 600,
-              opacity: hidden.has(s) ? 0.45 : 1,
-              transition: 'all 0.15s',
+              cursor: 'pointer',
+              transition: 'all var(--transition-fast)',
             }}
           >
-            {s}
+            Area
           </button>
-        ))}
+          <button
+            onClick={() => setViewMode('line')}
+            style={{
+              padding: 'var(--space-1) var(--space-3)',
+              border: 'none',
+              borderRadius: 'var(--radius-sm)',
+              background: viewMode === 'line' ? 'var(--accent-primary)' : 'transparent',
+              color: viewMode === 'line' ? '#fff' : 'var(--text-muted)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all var(--transition-fast)',
+            }}
+          >
+            Line
+          </button>
+        </div>
+
+        {/* Legend */}
+        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <div style={{
+              width: 12,
+              height: 12,
+              borderRadius: '50%',
+              background: CHARGING_COLORS.Charging,
+              boxShadow: `0 0 8px ${CHARGING_COLORS.Charging}66`
+            }} />
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>
+              Charging
+            </span>
+          </div>
+          {showChargingOnly && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <div style={{
+                width: 12,
+                height: 12,
+                borderRadius: '50%',
+                background: CHARGING_COLORS.Other
+              }} />
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>
+                Other
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={300}>
-        <AreaChart data={entries} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+      <ResponsiveContainer width="100%" height={360}>
+        <ChartComponent data={entries} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
           <defs>
-            {visible.map(s => (
-              <linearGradient key={s} id={`grad-${s}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor={colorFor(s)} stopOpacity={0.75} />
-                <stop offset="95%" stopColor={colorFor(s)} stopOpacity={0.45} />
-              </linearGradient>
-            ))}
+            <linearGradient id="gradCharging" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
+              <stop offset="95%" stopColor="#10b981" stopOpacity={0.05} />
+            </linearGradient>
+            <linearGradient id="gradOther" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#475569" stopOpacity={0.2} />
+              <stop offset="95%" stopColor="#475569" stopOpacity={0.02} />
+            </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-          <XAxis dataKey="time" tick={{ fill: '#94a3b8', fontSize: 11 }} interval="preserveStartEnd" />
-          <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} />
-          <Tooltip
-            contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}
-            labelStyle={{ color: '#e2e8f0' }}
-            itemStyle={{ color: '#cbd5e1' }}
+
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+
+          <XAxis
+            dataKey="time"
+            tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+            stroke="var(--border-medium)"
+            interval="preserveStartEnd"
           />
-          <Legend wrapperStyle={{ color: '#94a3b8', fontSize: 12 }} />
-          {visible.map(s => (
-            <Area
-              key={s}
-              type="monotone"
-              dataKey={s}
-              stackId="status"
-              stroke={colorFor(s)}
-              fill={`url(#grad-${s})`}
-              strokeWidth={2}
-            />
-          ))}
-        </AreaChart>
+
+          <YAxis
+            tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+            stroke="var(--border-medium)"
+          />
+
+          <Tooltip
+            contentStyle={{
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-medium)',
+              borderRadius: 'var(--radius-md)',
+              boxShadow: 'var(--shadow-lg)',
+              padding: 'var(--space-3)'
+            }}
+            labelStyle={{
+              color: 'var(--text-primary)',
+              fontWeight: 600,
+              marginBottom: 'var(--space-2)'
+            }}
+            itemStyle={{
+              color: 'var(--text-secondary)',
+              fontSize: 'var(--text-sm)',
+              padding: 'var(--space-1) 0'
+            }}
+          />
+
+          {viewMode === 'area' ? (
+            <>
+              <Area
+                type="monotone"
+                dataKey="Charging"
+                stroke="#10b981"
+                fill="url(#gradCharging)"
+                strokeWidth={3}
+                dot={false}
+                activeDot={{
+                  r: 6,
+                  fill: '#10b981',
+                  stroke: '#fff',
+                  strokeWidth: 2
+                }}
+              />
+              {showChargingOnly && (
+                <Area
+                  type="monotone"
+                  dataKey="Other"
+                  stroke="#475569"
+                  fill="url(#gradOther)"
+                  strokeWidth={1.5}
+                  strokeDasharray="5 5"
+                  dot={false}
+                />
+              )}
+            </>
+          ) : (
+            <>
+              <Line
+                type="monotone"
+                dataKey="Charging"
+                stroke="#10b981"
+                strokeWidth={3}
+                dot={{ fill: '#10b981', r: 3 }}
+                activeDot={{
+                  r: 6,
+                  fill: '#10b981',
+                  stroke: '#fff',
+                  strokeWidth: 2
+                }}
+              />
+              {showChargingOnly && (
+                <Line
+                  type="monotone"
+                  dataKey="Other"
+                  stroke="#475569"
+                  strokeWidth={1.5}
+                  strokeDasharray="5 5"
+                  dot={false}
+                />
+              )}
+            </>
+          )}
+        </ChartComponent>
       </ResponsiveContainer>
     </div>
   );
