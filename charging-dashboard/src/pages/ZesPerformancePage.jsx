@@ -7,167 +7,343 @@ import {
   fetchStationPerformanceRecommendationDistribution,
   fetchStationPerformanceDemandSupplyMatrix,
   fetchStationPerformanceUnderutilized,
+  fetchStationPerformanceOverutilized,
   fetchStationPerformanceSearch,
+  fetchStationPerformanceAvailableDates,
 } from '../api/zesApi';
+import {
+  Badge, UtilBar, Button, FilterChip, ChartCard,
+  EmptyState, MetricCard, TOOLTIP_STYLE, SectionLabel, InfoTooltip,
+} from '../components/ui';
 import PerformanceBackfillModal from '../components/PerformanceBackfillModal';
+import DateCalendar             from '../components/DateCalendar';
 
-// ── Renk paleti ──────────────────────────────────────────────────────────────
-
-const REC_COLORS = {
-  EXPAND:              '#f87171',
-  INCREASE_CAPACITY:   '#fb923c',
-  OPTIMIZE:            '#facc15',
-  MONITOR_GROWTH:      '#38bdf8',
-  MAINTAIN:            '#4ade80',
-  IMPROVE_EFFICIENCY:  '#a78bfa',
-  MONITOR:             '#94a3b8',
-  REVIEW:              '#e2e8f0',
-  RELOCATE:            '#f43f5e',
-  INSUFFICIENT_DATA:   '#475569',
-};
-
-const DEMAND_COLORS = { HIGH: '#f87171', MEDIUM: '#facc15', LOW: '#4ade80' };
-const SUPPLY_COLORS = { FEW: '#f87171', MODERATE: '#fb923c', MANY: '#4ade80', UNKNOWN: '#64748b' };
-
-function recColor(code)    { return REC_COLORS[code]    ?? '#64748b'; }
-function demandColor(tier) { return DEMAND_COLORS[tier] ?? '#64748b'; }
-function supplyColor(tier) { return SUPPLY_COLORS[tier] ?? '#64748b'; }
-
-// ── Küçük badge bileşenleri ──────────────────────────────────────────────────
-
-function TierBadge({ value, colorFn }) {
-  const c = colorFn(value);
+/* ── Tooltip helpers ────────────────────────────────────────────── */
+function TTSection({ title, children }) {
   return (
-    <span style={{
-      display: 'inline-block', padding: '2px 10px', borderRadius: 999,
-      background: c + '22', color: c, border: `1px solid ${c}55`,
-      fontSize: 11, fontWeight: 700, letterSpacing: '0.03em',
-    }}>
-      {value ?? '—'}
-    </span>
-  );
-}
-
-function RecBadge({ value }) {
-  const c = recColor(value);
-  return (
-    <span style={{
-      display: 'inline-block', padding: '2px 9px', borderRadius: 6,
-      background: c + '22', color: c, border: `1px solid ${c}44`,
-      fontSize: 11, fontWeight: 700,
-    }}>
-      {value ?? '—'}
-    </span>
-  );
-}
-
-function UtilBar({ pct }) {
-  const val  = pct != null ? Number(pct).toFixed(1) : null;
-  const fill = pct >= 40 ? '#f87171' : pct >= 15 ? '#facc15' : '#4ade80';
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <div style={{ flex: 1, height: 6, background: '#1e293b', borderRadius: 3, overflow: 'hidden' }}>
-        <div style={{ width: `${Math.min(pct ?? 0, 100)}%`, height: '100%', background: fill, borderRadius: 3 }} />
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 9, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>
+        {title}
       </div>
-      <span style={{ color: fill, fontSize: 12, fontWeight: 600, minWidth: 38, textAlign: 'right' }}>
-        {val != null ? `${val}%` : '—'}
-      </span>
+      {children}
     </div>
   );
 }
 
-// ── Chart: Tavsiye Dağılımı (Pie) ───────────────────────────────────────────
-
-function RecommendationPieChart({ data }) {
-  if (!data) return <div className="loading">Yükleniyor…</div>;
-  const entries = Object.entries(data).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  if (!entries.length) return <div className="loading">Veri yok</div>;
-  const total = entries.reduce((s, e) => s + e.value, 0);
+function TTFormula({ lines }) {
   return (
-    <ResponsiveContainer width="100%" height={320}>
-      <PieChart>
-        <Pie
-          data={entries} dataKey="value" nameKey="name"
-          cx="50%" cy="50%" outerRadius={110}
-          label={false}
-          labelLine={false}
-        >
-          {entries.map(e => <Cell key={e.name} fill={recColor(e.name)} />)}
-        </Pie>
-        <Tooltip
-          formatter={(v, name) => [`${v.toLocaleString()} istasyon  (${((v / total) * 100).toFixed(1)}%)`, name]}
-          contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}
-          labelStyle={{ color: '#e2e8f0' }}
-          itemStyle={{ color: '#cbd5e1' }}
-        />
-        <Legend formatter={(v) => <span style={{ color: recColor(v), fontWeight: 600, fontSize: 12 }}>{v}</span>} />
-      </PieChart>
-    </ResponsiveContainer>
+    <div style={{
+      background: 'rgba(0,0,0,0.3)', borderRadius: 5, padding: '7px 10px',
+      fontFamily: 'var(--font-mono)', fontSize: 10.5, color: '#cbd5e1',
+      lineHeight: 1.85, borderLeft: '2px solid #818cf8', margin: '4px 0',
+    }}>
+      {lines.map((l, i) => <div key={i}>{l}</div>)}
+    </div>
   );
 }
 
-// ── Chart: Talep × Arz Matrisi (Grouped Bar) ─────────────────────────────────
+function TTVar({ sym, desc }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, marginTop: 2, alignItems: 'flex-start' }}>
+      <code style={{ fontFamily: 'var(--font-mono)', color: '#818cf8', fontSize: 9.5, minWidth: 96, flexShrink: 0, paddingTop: 1 }}>{sym}</code>
+      <span style={{ color: '#64748b', fontSize: 9.5, lineHeight: 1.4 }}>{desc}</span>
+    </div>
+  );
+}
 
+function TTTier({ color, name, cond }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
+      <span style={{ width: 6, height: 6, borderRadius: 2, background: color, flexShrink: 0 }} />
+      <code style={{ fontFamily: 'var(--font-mono)', color, fontSize: 9.5, minWidth: 72, flexShrink: 0 }}>{name}</code>
+      <span style={{ color: '#94a3b8', fontSize: 9.5 }}>{cond}</span>
+    </div>
+  );
+}
+
+function TTTitle({ children }) {
+  return (
+    <div style={{ fontSize: 11.5, fontWeight: 600, color: '#e2e8f0', marginBottom: 9, borderBottom: '1px solid rgba(255,255,255,0.07)', paddingBottom: 7 }}>
+      {children}
+    </div>
+  );
+}
+
+/* ── Tooltip content: Demand Tier ───────────────────────────────── */
+function DemandTierContent() {
+  return (
+    <div>
+      <TTTitle>Talep Seviyesi — Hesaplama Yöntemi</TTTitle>
+
+      <TTSection title="① Şarj Kullanım Oranı  ( U )">
+        <TTFormula lines={[
+          'U = min(100,  (Σ t_şarj / (N_soket × 1440)) × 100)',
+        ]} />
+        <TTVar sym="Σ t_şarj"  desc="Günlük toplam şarj süresi (dakika)" />
+        <TTVar sym="N_soket"   desc="İstasyondaki konnektör sayısı" />
+        <TTVar sym="1440"      desc="Dakika/gün sabiti — 24 × 60" />
+        <TTVar sym="min(·,100)" desc="Tavan — %100'ü aşamaz" />
+      </TTSection>
+
+      <TTSection title="② Sınıflandırma Eşikleri">
+        <TTTier color="var(--clr-danger-text)"  name="HIGH"   cond="U ≥ 40%" />
+        <TTTier color="var(--clr-warning-text)" name="MEDIUM" cond="15% ≤ U < 40%" />
+        <TTTier color="var(--clr-success-text)" name="LOW"    cond="U < 15%" />
+      </TTSection>
+    </div>
+  );
+}
+
+/* ── Tooltip content: Supply Tier ───────────────────────────────── */
+function SupplyTierContent() {
+  return (
+    <div>
+      <TTTitle>Arz Seviyesi — Hesaplama Yöntemi</TTTitle>
+
+      <TTSection title="① Haversine Mesafe Formülü  ( d )">
+        <TTFormula lines={[
+          'd = 2R · arctan2(√a,  √(1−a))',
+          'a = sin²(Δφ/2) + cos(φ₁)·cos(φ₂)·sin²(Δλ/2)',
+          'R = 6.371 × 10³ km',
+        ]} />
+        <TTVar sym="φ, λ"   desc="Enlem / boylam (radyan)" />
+        <TTVar sym="Δφ, Δλ" desc="İki istasyon arası fark" />
+        <TTVar sym="R"       desc="Dünya yarıçapı sabiti" />
+      </TTSection>
+
+      <TTSection title="② Yakın İstasyon Ort. Kullanımı  ( U_ort )">
+        <TTFormula lines={[
+          'U_ort = (Σ U_i) / N,   ∀ i : d(i,  istasyon) ≤ 1.0 km',
+        ]} />
+        <TTVar sym="U_i" desc="i. yakın istasyonun kullanım oranı (%)" />
+        <TTVar sym="N"   desc="Arama yarıçapı içindeki istasyon sayısı" />
+        <TTVar sym="r"   desc="Arama yarıçapı — 1.0 km (sabit)" />
+      </TTSection>
+
+      <TTSection title="③ Efektif Arz  ( S_eff )">
+        <TTFormula lines={[
+          'S_eff = N_yakın × (1 − U_ort / 100)',
+          '      = N_yakın        (fallback: U_ort mevcut değilse)',
+        ]} />
+        <TTVar sym="N_yakın" desc="1 km içindeki istasyon sayısı" />
+        <TTVar sym="U_ort"   desc="Yakın istasyonların ort. kullanımı (%)" />
+      </TTSection>
+
+      <TTSection title="④ Sınıflandırma Eşikleri">
+        <TTTier color="var(--clr-danger-text)"  name="FEW"      cond="S_eff ≤ 2.0" />
+        <TTTier color="var(--clr-warning-text)" name="MODERATE" cond="2.0 < S_eff ≤ 5.0" />
+        <TTTier color="var(--clr-success-text)" name="MANY"     cond="S_eff > 5.0" />
+        <TTTier color="#475569"                 name="UNKNOWN"  cond="N_yakın < 0  (API hatası)" />
+      </TTSection>
+    </div>
+  );
+}
+
+/* ── Tooltip content: Priority Score ────────────────────────────── */
+function PriorityScoreContent() {
+  return (
+    <div>
+      <TTTitle>Öncelik Skoru — Hesaplama Yöntemi</TTTitle>
+
+      <TTSection title="① Formül  ( P )">
+        <TTFormula lines={[
+          'P = min(100,  U / max(S_eff,  1.0))',
+        ]} />
+        <TTVar sym="U"           desc="charging_utilization_pct  (%)" />
+        <TTVar sym="S_eff"       desc="effective_supply_rate" />
+        <TTVar sym="max(·, 1.0)" desc="Zemin — sıfıra bölünmeyi önler" />
+        <TTVar sym="min(·, 100)" desc="Tavan — normalize edilmiş skor" />
+      </TTSection>
+
+      <TTSection title="② Renk Skalası">
+        <TTTier color="var(--clr-danger-text)"  name="P ≥ 40" cond="Yüksek Öncelik" />
+        <TTTier color="var(--clr-warning-text)" name="P ≥ 15" cond="Orta Öncelik" />
+        <TTTier color="var(--clr-success-text)" name="P < 15" cond="Düşük Öncelik" />
+      </TTSection>
+    </div>
+  );
+}
+
+/* ── Reusable TH content with InfoTooltip ───────────────────────── */
+const TH_DEMAND = (
+  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+    Talep<InfoTooltip width={360}><DemandTierContent /></InfoTooltip>
+  </span>
+);
+const TH_SUPPLY = (
+  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+    Arz<InfoTooltip width={410}><SupplyTierContent /></InfoTooltip>
+  </span>
+);
+const TH_PRIORITY = (
+  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+    Öncelik<InfoTooltip width={310}><PriorityScoreContent /></InfoTooltip>
+  </span>
+);
+
+/* ── Priority score rengi (0-100 arası skor) ────────────────────── */
+const priorityColor = score => {
+  if (score == null) return 'var(--tx-disabled)';
+  if (score >= 40) return 'var(--clr-danger-text)';
+  if (score >= 15) return 'var(--clr-warning-text)';
+  return 'var(--clr-success-text)';
+};
+
+/* ── Semantic color maps ────────────────────────────────────────── */
+const REC_COLORS = {
+  EXPAND:              '#ef4444',
+  INCREASE_CAPACITY:   '#f97316',
+  OPTIMIZE:            '#f59e0b',
+  MONITOR_GROWTH:      '#94a3b8',
+  MAINTAIN:            '#10b981',
+  IMPROVE_EFFICIENCY:  '#3b82f6',
+  MONITOR:             '#64748b',
+  REVIEW:              '#8b5cf6',
+  RELOCATE:            '#ef4444',
+  INSUFFICIENT_DATA:   '#293d52',
+};
+const SUPPLY_COLORS = { FEW: '#ef4444', MODERATE: '#f59e0b', MANY: '#10b981', UNKNOWN: '#475569' };
+
+const recColor    = code => REC_COLORS[code]    ?? '#64748b';
+const supplyColor = tier => SUPPLY_COLORS[tier] ?? '#64748b';
+
+/* ── Recommendation Donut + Legend ─────────────────────────────── */
+function RecommendationChart({ data }) {
+  if (!data) return <div className="loading">Yükleniyor…</div>;
+  const entries = Object.entries(data)
+    .map(([name, value]) => ({ name, value }))
+    .filter(e => e.value > 0)
+    .sort((a, b) => b.value - a.value);
+  if (!entries.length) return <EmptyState title="Veri yok" />;
+  const total = entries.reduce((s, e) => s + e.value, 0);
+
+  return (
+    <div style={{ display: 'flex', gap: 24, alignItems: 'center', height: 320, flexWrap: 'wrap' }}>
+      <ResponsiveContainer width={280} height={280}>
+        <PieChart>
+          <Pie
+            data={entries} dataKey="value" nameKey="name"
+            cx="50%" cy="50%" innerRadius={70} outerRadius={110}
+            paddingAngle={2} strokeWidth={0}
+          >
+            {entries.map(e => <Cell key={e.name} fill={recColor(e.name)} />)}
+          </Pie>
+          <Tooltip
+            formatter={(v, name) => [`${v.toLocaleString()} istasyon (${((v/total)*100).toFixed(1)}%)`, name]}
+            {...TOOLTIP_STYLE}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+
+      {/* Side legend */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 200 }}>
+        {entries.map(e => {
+          const pct  = ((e.value / total) * 100).toFixed(1);
+          const c    = recColor(e.name);
+          const meta = REC_META[e.name];
+          return (
+            <div key={e.name} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: c, flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, color: 'var(--tx-secondary)', fontWeight: 600, lineHeight: 1.3 }}>
+                  {meta?.label ?? e.name}
+                </div>
+                {meta && (
+                  <div style={{ fontSize: 10, color: 'var(--tx-disabled)', lineHeight: 1.2 }}>
+                    T:{meta.demand} · A:{meta.supply}
+                  </div>
+                )}
+              </div>
+              <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: c, fontWeight: 600, minWidth: 44, textAlign: 'right' }}>
+                {pct}%
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--tx-tertiary)', minWidth: 56, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                {e.value.toLocaleString()}
+              </span>
+            </div>
+          );
+        })}
+        <div style={{ borderTop: '1px solid var(--bd-subtle)', marginTop: 4, paddingTop: 6, display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 12, color: 'var(--tx-tertiary)', fontWeight: 600 }}>Toplam</span>
+          <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--tx-primary)', fontWeight: 700 }}>
+            {total.toLocaleString()}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Demand × Supply Matrix ─────────────────────────────────────── */
 const SUPPLY_TIERS = ['FEW', 'MODERATE', 'MANY', 'UNKNOWN'];
+
+const DEMAND_LABELS = { HIGH: 'Yüksek Talep', MEDIUM: 'Orta Talep', LOW: 'Düşük Talep' };
+const SUPPLY_LABELS      = { FEW: 'Az ZES Arzı', MODERATE: 'Orta ZES Arzı', MANY: 'Çok ZES Arzı', UNKNOWN: 'Bilinmiyor' };
+const SUPPLY_LABELS_SHORT = { FEW: 'Az Arz', MODERATE: 'Orta Arz', MANY: 'Çok Arz', UNKNOWN: 'Bilinmiyor' };
 
 function DemandSupplyChart({ data }) {
   if (!data) return <div className="loading">Yükleniyor…</div>;
   const entries = Object.entries(data).map(([demand, supplyMap]) => {
-    const row = { demand };
+    const row = { demand, demandLabel: DEMAND_LABELS[demand] ?? demand };
     for (const st of SUPPLY_TIERS) row[st] = supplyMap[st] ?? 0;
     return row;
   });
-  if (!entries.length) return <div className="loading">Veri yok</div>;
-
-  const customTooltip = ({ active, payload, label }) => {
-    if (!active || !payload?.length) return null;
-    return (
-      <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: '8px 12px' }}>
-        <p style={{ color: '#e2e8f0', marginBottom: 4, fontWeight: 600 }}>Talep: {label}</p>
-        {payload.map(p => (
-          <p key={p.dataKey} style={{ color: p.fill, margin: '2px 0', fontSize: 12 }}>
-            {p.dataKey}: {p.value}
-          </p>
-        ))}
-      </div>
-    );
-  };
+  if (!entries.length) return <EmptyState title="Veri yok" />;
 
   return (
     <ResponsiveContainer width="100%" height={300}>
-      <BarChart data={entries} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-        <XAxis dataKey="demand" tick={{ fill: '#94a3b8', fontSize: 13, fontWeight: 700 }} />
-        <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} allowDecimals={false} />
-        <Tooltip content={customTooltip} />
-        <Legend formatter={(v) => <span style={{ color: supplyColor(v), fontWeight: 600, fontSize: 12 }}>{v}</span>} />
+      <BarChart data={entries} margin={{ top: 8, right: 24, left: 0, bottom: 5 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--bd-subtle)" vertical={false} />
+        <XAxis
+          dataKey="demand"
+          tickFormatter={v => DEMAND_LABELS[v] ?? v}
+          tick={{ fill: 'var(--tx-secondary)', fontSize: 11, fontWeight: 600 }}
+          axisLine={false} tickLine={false}
+        />
+        <YAxis
+          tick={{ fill: 'var(--tx-tertiary)', fontSize: 11 }}
+          axisLine={false} tickLine={false} allowDecimals={false}
+          label={{ value: 'İstasyon Sayısı', angle: -90, position: 'insideLeft', offset: 12, fill: 'var(--tx-disabled)', fontSize: 11 }}
+        />
+        <Tooltip
+          formatter={(v, name) => [v.toLocaleString() + ' istasyon', SUPPLY_LABELS[name] ?? name]}
+          labelFormatter={label => DEMAND_LABELS[label] ?? label}
+          {...TOOLTIP_STYLE}
+        />
+        <Legend
+          wrapperStyle={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 4, paddingTop: 8 }}
+          formatter={v => (
+            <span style={{ color: supplyColor(v), fontSize: 11, fontWeight: 500 }}>
+              {SUPPLY_LABELS_SHORT[v] ?? v}
+            </span>
+          )}
+        />
         {SUPPLY_TIERS.map(st => (
-          <Bar key={st} dataKey={st} fill={supplyColor(st)} radius={[3, 3, 0, 0]} />
+          <Bar key={st} dataKey={st} fill={supplyColor(st)} radius={[3, 3, 0, 0]} maxBarSize={40} />
         ))}
       </BarChart>
     </ResponsiveContainer>
   );
 }
 
-// ── Tablo: Düşük Kullanımlı İstasyonlar ─────────────────────────────────────
-
+/* ── Underutilized table ────────────────────────────────────────── */
 function UnderutilizedTable({ rows }) {
   const [expanded, setExpanded] = useState(null);
   if (!rows) return <div className="loading">Yükleniyor…</div>;
-  if (!rows.length) return <div className="loading">Veri yok</div>;
+  if (!rows.length) return <EmptyState title="Veri yok" />;
 
   return (
-    <div className="table-wrapper" style={{ maxHeight: 320, overflowY: 'auto' }}>
+    <div className="table-wrapper" style={{ maxHeight: 340, overflowY: 'auto' }}>
       <table className="data-table">
         <thead>
           <tr>
-            <th style={{ width: 24 }} />
+            <th style={{ width: 32 }} />
             <th>İstasyon</th>
             <th>Şehir</th>
-            <th>Talep</th>
-            <th>Arz</th>
-            <th>Kullanım %</th>
-            <th>D/S Ratio</th>
+            <th>{TH_DEMAND}</th>
+            <th>{TH_SUPPLY}</th>
+            <th>Kullanım</th>
+            <th>{TH_PRIORITY}</th>
             <th>Tavsiye</th>
           </tr>
         </thead>
@@ -179,36 +355,26 @@ function UnderutilizedTable({ rows }) {
                 <tr
                   key={`r-${i}`}
                   onClick={() => setExpanded(p => p === i ? null : i)}
-                  style={{ cursor: 'pointer', background: isOpen ? '#1a2744' : undefined }}
+                  style={{ cursor: 'pointer' }}
                 >
-                  <td style={{ textAlign: 'center', color: '#475569', fontSize: 11, userSelect: 'none' }}>
-                    {isOpen ? '▾' : '▸'}
+                  <td style={{ textAlign: 'center', color: 'var(--tx-disabled)', fontSize: 11, userSelect: 'none' }}>
+                    <span style={{ display: 'inline-block', transition: 'transform 150ms', transform: isOpen ? 'rotate(90deg)' : 'none' }}>▶</span>
                   </td>
-                  <td style={{ fontWeight: 600, color: '#e2e8f0', maxWidth: 200 }}>{r.station_name ?? '—'}</td>
-                  <td style={{ color: '#94a3b8' }}>{r.city_name ?? '—'}</td>
-                  <td><TierBadge value={r.demand_tier} colorFn={demandColor} /></td>
-                  <td><TierBadge value={r.supply_tier} colorFn={supplyColor} /></td>
-                  <td style={{ minWidth: 140 }}><UtilBar pct={r.charging_utilization_pct} /></td>
-                  <td style={{ textAlign: 'right', color: '#facc15', fontWeight: 600, fontFamily: 'monospace' }}>
-                    {r.demand_supply_ratio != null ? Number(r.demand_supply_ratio).toFixed(2) : '—'}
+                  <td style={{ fontWeight: 600, color: 'var(--tx-primary)', maxWidth: 200 }}>{r.station_name ?? '—'}</td>
+                  <td style={{ color: 'var(--tx-secondary)' }}>{r.city_name ?? '—'}</td>
+                  <td><Badge value={r.demand_tier} /></td>
+                  <td><Badge value={r.supply_tier} /></td>
+                  <td><UtilBar pct={r.charging_utilization_pct} /></td>
+                  <td style={{ textAlign: 'right', color: priorityColor(r.demand_supply_ratio), fontWeight: 600, fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                    {r.demand_supply_ratio != null ? Number(r.demand_supply_ratio).toFixed(1) : '—'}
                   </td>
-                  <td><RecBadge value={r.recommendation_code} /></td>
+                  <td><Badge value={r.recommendation_code} label={recLabel(r.recommendation_code)} /></td>
                 </tr>
                 {isOpen && (
                   <tr key={`expand-${i}`}>
                     <td />
-                    <td colSpan={7} style={{ background: '#0f172a', padding: '10px 16px 14px' }}>
-                      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
-                        <strong style={{ color: '#64748b' }}>Adres:</strong> {r.address || '—'}
-                      </div>
-                      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
-                        <strong style={{ color: '#64748b' }}>Soket:</strong> {r.connector_count ?? '—'} &nbsp;|&nbsp;
-                        <strong style={{ color: '#64748b' }}>Yakın İstasyon:</strong> {r.nearby_stations_count ?? '—'} &nbsp;|&nbsp;
-                        <strong style={{ color: '#64748b' }}>Yakın Soket:</strong> {r.nearby_connectors_count ?? '—'}
-                      </div>
-                      <div style={{ fontSize: 12, color: recColor(r.recommendation_code) }}>
-                        {r.recommendation || '—'}
-                      </div>
+                    <td colSpan={7} style={{ background: 'var(--bg-elevated)', padding: '12px 16px' }}>
+                      <ExpandedRow r={r} />
                     </td>
                   </tr>
                 )}
@@ -221,24 +387,86 @@ function UnderutilizedTable({ rows }) {
   );
 }
 
-// ── Arama Sonuç Tablosu ──────────────────────────────────────────────────────
+/* ── Overutilized table ─────────────────────────────────────────── */
+function OverutilizedTable({ rows }) {
+  const [expanded, setExpanded] = useState(null);
+  if (!rows) return <div className="loading">Yükleniyor…</div>;
+  if (!rows.length) return <EmptyState title="Veri yok" />;
 
+  return (
+    <div className="table-wrapper" style={{ maxHeight: 340, overflowY: 'auto' }}>
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th style={{ width: 32 }} />
+            <th>İstasyon</th>
+            <th>Şehir</th>
+            <th>{TH_DEMAND}</th>
+            <th>{TH_SUPPLY}</th>
+            <th>Kullanım</th>
+            <th>{TH_PRIORITY}</th>
+            <th>Yakın Soket</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => {
+            const isOpen = expanded === i;
+            return (
+              <>
+                <tr
+                  key={`ov-${i}`}
+                  onClick={() => setExpanded(p => p === i ? null : i)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <td style={{ textAlign: 'center', color: 'var(--tx-disabled)', fontSize: 11, userSelect: 'none' }}>
+                    <span style={{ display: 'inline-block', transition: 'transform 150ms', transform: isOpen ? 'rotate(90deg)' : 'none' }}>▶</span>
+                  </td>
+                  <td style={{ fontWeight: 600, color: 'var(--tx-primary)', maxWidth: 200 }}>{r.station_name ?? '—'}</td>
+                  <td style={{ color: 'var(--tx-secondary)' }}>{r.city_name ?? '—'}</td>
+                  <td><Badge value={r.demand_tier} /></td>
+                  <td><Badge value={r.supply_tier} /></td>
+                  <td><UtilBar pct={r.charging_utilization_pct} /></td>
+                  <td style={{ textAlign: 'right', color: priorityColor(r.demand_supply_ratio), fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                    {r.demand_supply_ratio != null ? Number(r.demand_supply_ratio).toFixed(1) : '—'}
+                  </td>
+                  <td style={{ textAlign: 'center', color: 'var(--tx-secondary)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                    {r.nearby_connectors_count ?? '—'}
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr key={`ov-exp-${i}`}>
+                    <td />
+                    <td colSpan={7} style={{ background: 'var(--bg-elevated)', padding: '12px 16px' }}>
+                      <ExpandedRow r={r} showCharging />
+                    </td>
+                  </tr>
+                )}
+              </>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ── Search result table ────────────────────────────────────────── */
 function SearchResultTable({ rows }) {
   const [expanded, setExpanded] = useState(null);
-  if (!rows || !rows.length) return <div className="loading">Sonuç yok</div>;
+  if (!rows || !rows.length) return <EmptyState title="Sonuç bulunamadı" description="Filtrelerinizi değiştirerek tekrar deneyin" />;
 
   return (
     <div className="table-wrapper">
       <table className="data-table">
         <thead>
           <tr>
-            <th style={{ width: 24 }} />
+            <th style={{ width: 32 }} />
             <th>İstasyon</th>
             <th>Şehir / İl</th>
-            <th>Talep</th>
-            <th>Arz</th>
-            <th>Kullanım %</th>
-            <th>D/S Ratio</th>
+            <th>{TH_DEMAND}</th>
+            <th>{TH_SUPPLY}</th>
+            <th>Kullanım</th>
+            <th>{TH_PRIORITY}</th>
             <th>Soket</th>
             <th>Tavsiye</th>
           </tr>
@@ -251,40 +479,27 @@ function SearchResultTable({ rows }) {
                 <tr
                   key={`sr-${i}`}
                   onClick={() => setExpanded(p => p === i ? null : i)}
-                  style={{ cursor: 'pointer', background: isOpen ? '#1a2744' : undefined }}
+                  style={{ cursor: 'pointer' }}
                 >
-                  <td style={{ textAlign: 'center', color: '#475569', fontSize: 11, userSelect: 'none' }}>
-                    {isOpen ? '▾' : '▸'}
+                  <td style={{ textAlign: 'center', color: 'var(--tx-disabled)', fontSize: 11, userSelect: 'none' }}>
+                    <span style={{ display: 'inline-block', transition: 'transform 150ms', transform: isOpen ? 'rotate(90deg)' : 'none' }}>▶</span>
                   </td>
-                  <td style={{ fontWeight: 600, color: '#e2e8f0', maxWidth: 200 }}>{r.station_name ?? '—'}</td>
-                  <td style={{ color: '#94a3b8' }}>
-                    {[r.city_name, r.province_name].filter(Boolean).join(' / ') || '—'}
+                  <td style={{ fontWeight: 600, color: 'var(--tx-primary)', maxWidth: 200 }}>{r.station_name ?? '—'}</td>
+                  <td>{[r.city_name, r.province_name].filter(Boolean).join(' / ') || '—'}</td>
+                  <td><Badge value={r.demand_tier} /></td>
+                  <td><Badge value={r.supply_tier} /></td>
+                  <td><UtilBar pct={r.charging_utilization_pct} /></td>
+                  <td style={{ textAlign: 'right', color: priorityColor(r.demand_supply_ratio), fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600 }}>
+                    {r.demand_supply_ratio != null ? Number(r.demand_supply_ratio).toFixed(1) : '—'}
                   </td>
-                  <td><TierBadge value={r.demand_tier} colorFn={demandColor} /></td>
-                  <td><TierBadge value={r.supply_tier} colorFn={supplyColor} /></td>
-                  <td style={{ minWidth: 140 }}><UtilBar pct={r.charging_utilization_pct} /></td>
-                  <td style={{ textAlign: 'right', color: '#facc15', fontWeight: 600, fontFamily: 'monospace' }}>
-                    {r.demand_supply_ratio != null ? Number(r.demand_supply_ratio).toFixed(2) : '—'}
-                  </td>
-                  <td style={{ textAlign: 'center', color: '#94a3b8' }}>{r.connector_count ?? '—'}</td>
-                  <td><RecBadge value={r.recommendation_code} /></td>
+                  <td style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 12 }}>{r.connector_count ?? '—'}</td>
+                  <td><Badge value={r.recommendation_code} label={recLabel(r.recommendation_code)} /></td>
                 </tr>
                 {isOpen && (
                   <tr key={`sre-${i}`}>
                     <td />
-                    <td colSpan={8} style={{ background: '#0f172a', padding: '10px 16px 14px' }}>
-                      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
-                        <strong style={{ color: '#64748b' }}>Adres:</strong> {r.address || '—'}
-                      </div>
-                      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
-                        <strong style={{ color: '#64748b' }}>Yakın İstasyon:</strong> {r.nearby_stations_count ?? '—'} &nbsp;|&nbsp;
-                        <strong style={{ color: '#64748b' }}>Yakın Soket:</strong> {r.nearby_connectors_count ?? '—'} &nbsp;|&nbsp;
-                        <strong style={{ color: '#64748b' }}>Toplam Şarj:</strong>{' '}
-                        {r.total_charging_minutes != null ? `${(r.total_charging_minutes / 60).toFixed(1)} sa` : '—'}
-                      </div>
-                      <div style={{ fontSize: 12, color: recColor(r.recommendation_code) }}>
-                        {r.recommendation || '—'}
-                      </div>
+                    <td colSpan={8} style={{ background: 'var(--bg-elevated)', padding: '12px 16px' }}>
+                      <ExpandedRow r={r} showCharging />
                     </td>
                   </tr>
                 )}
@@ -297,67 +512,73 @@ function SearchResultTable({ rows }) {
   );
 }
 
-// ── TileGroup (filtre butonları) ─────────────────────────────────────────────
-
-function TileGroup({ options, value, onChange }) {
+/* ── Expanded row detail panel ──────────────────────────────────── */
+function ExpandedRow({ r, showCharging }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-      {options.map(opt => {
-        const active = value === opt.value;
-        const color  = opt.color;
-        return (
-          <button
-            key={opt.value}
-            onClick={() => onChange(opt.value)}
-            style={{
-              padding: '5px 13px', borderRadius: 7, border: 'none',
-              background: active ? color : '#1e293b',
-              color: active ? '#0f172a' : color,
-              fontWeight: 700, fontSize: 12, cursor: 'pointer',
-              outline: 'none', transition: 'all 0.15s',
-              transform: active ? 'scale(1.05)' : 'scale(1)',
-              boxShadow: active ? `0 2px 10px ${color}66` : 'none',
-            }}
-          >
-            {opt.label}
-          </button>
-        );
-      })}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {r.address && (
+        <div style={{ fontSize: 12, color: 'var(--tx-secondary)' }}>
+          <span style={{ color: 'var(--tx-tertiary)', fontWeight: 600 }}>Adres: </span>
+          {r.address}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <MetricCard label="Soket" value={r.connector_count ?? '—'} />
+        <MetricCard label="Yakın İstasyon" value={r.nearby_stations_count ?? '—'} />
+        <MetricCard label="Yakın Soket" value={r.nearby_connectors_count ?? '—'} />
+        {showCharging && r.total_charging_minutes != null && (
+          <MetricCard
+            label="Toplam Şarj"
+            value={`${(r.total_charging_minutes / 60).toFixed(1)} sa`}
+            color="var(--clr-success-text)"
+          />
+        )}
+      </div>
+      {r.recommendation && (
+        <div style={{
+          fontSize: 12, padding: '8px 12px',
+          background: `${recColor(r.recommendation_code)}12`,
+          border: `1px solid ${recColor(r.recommendation_code)}30`,
+          borderRadius: 'var(--rx-md)',
+          color: recColor(r.recommendation_code),
+          fontWeight: 500,
+        }}>
+          {r.recommendation}
+        </div>
+      )}
     </div>
   );
 }
 
-// ── Filtre seçenekleri ────────────────────────────────────────────────────────
+/* ── Recommendation metadata (label + demand/supply context) ────── */
+export const REC_META = {
+  EXPAND:             { label: 'Yeni İstasyon Kur',      demand: 'Yüksek', supply: 'Az',   color: '#ef4444' },
+  INCREASE_CAPACITY:  { label: 'Soket Ekle',             demand: 'Yüksek', supply: 'Orta', color: '#f97316' },
+  OPTIMIZE:           { label: 'Hizmet Kalitesini Artır',demand: 'Yüksek', supply: 'Çok',  color: '#f59e0b' },
+  MONITOR_GROWTH:     { label: 'Büyüme Fırsatı',         demand: 'Orta',   supply: 'Az',   color: '#94a3b8' },
+  MAINTAIN:           { label: 'Dengeyi Koru',           demand: 'Orta',   supply: 'Orta', color: '#10b981' },
+  IMPROVE_EFFICIENCY: { label: 'Kullanımı Artır',        demand: 'Orta',   supply: 'Çok',  color: '#3b82f6' },
+  MONITOR:            { label: 'Gelişimi İzle',          demand: 'Düşük',  supply: 'Az',   color: '#64748b' },
+  REVIEW:             { label: 'Yatırımı Gözden Geçir',  demand: 'Düşük',  supply: 'Orta', color: '#8b5cf6' },
+  RELOCATE:           { label: 'İstasyonu Taşı',         demand: 'Düşük',  supply: 'Çok',  color: '#ef4444' },
+};
+export const recLabel = code => REC_META[code]?.label ?? code;
 
-const DEMAND_OPTIONS = [
+/* ── Filter options ─────────────────────────────────────────────── */
+const DEMAND_OPTS = [
   { value: '',       label: 'Tümü',   color: '#64748b' },
-  { value: 'HIGH',   label: 'HIGH',   color: '#f87171' },
-  { value: 'MEDIUM', label: 'MEDIUM', color: '#facc15' },
-  { value: 'LOW',    label: 'LOW',    color: '#4ade80' },
+  { value: 'HIGH',   label: 'Yüksek', color: '#ef4444' },
+  { value: 'MEDIUM', label: 'Orta',   color: '#f59e0b' },
+  { value: 'LOW',    label: 'Düşük',  color: '#10b981' },
 ];
-
-const SUPPLY_OPTIONS = [
-  { value: '',         label: 'Tümü',     color: '#64748b' },
-  { value: 'FEW',      label: 'FEW',      color: '#f87171' },
-  { value: 'MODERATE', label: 'MODERATE', color: '#fb923c' },
-  { value: 'MANY',     label: 'MANY',     color: '#4ade80' },
+const SUPPLY_OPTS = [
+  { value: '',         label: 'Tümü', color: '#64748b' },
+  { value: 'FEW',      label: 'Az',   color: '#ef4444' },
+  { value: 'MODERATE', label: 'Orta', color: '#f59e0b' },
+  { value: 'MANY',     label: 'Çok',  color: '#10b981' },
 ];
-
-const REC_OPTIONS = [
-  { value: '',                  label: 'Tümü',              color: '#64748b' },
-  { value: 'EXPAND',            label: 'EXPAND',            color: '#f87171' },
-  { value: 'INCREASE_CAPACITY', label: 'INCREASE_CAPACITY', color: '#fb923c' },
-  { value: 'OPTIMIZE',          label: 'OPTIMIZE',          color: '#facc15' },
-  { value: 'MONITOR_GROWTH',    label: 'MONITOR_GROWTH',    color: '#38bdf8' },
-  { value: 'MAINTAIN',          label: 'MAINTAIN',          color: '#4ade80' },
-  { value: 'IMPROVE_EFFICIENCY',label: 'IMPROVE_EFF.',      color: '#a78bfa' },
-  { value: 'MONITOR',           label: 'MONITOR',           color: '#94a3b8' },
-  { value: 'REVIEW',            label: 'REVIEW',            color: '#e2e8f0' },
-  { value: 'RELOCATE',          label: 'RELOCATE',          color: '#f43f5e' },
-];
-
 const SORT_OPTIONS = [
-  { value: 'demand_supply_ratio',      label: 'D/S Ratio' },
+  { value: 'demand_supply_ratio',      label: 'Öncelik Skoru' },
   { value: 'charging_utilization_pct', label: 'Kullanım %' },
   { value: 'connector_count',          label: 'Soket Sayısı' },
   { value: 'nearby_stations_count',    label: 'Yakın İstasyon' },
@@ -365,27 +586,19 @@ const SORT_OPTIONS = [
 
 const PAGE_SIZE = 20;
 
-const arrowStyle = {
-  background: 'transparent', border: '1px solid #334155', borderRadius: 8,
-  color: '#94a3b8', fontSize: 18, width: 36, height: 36, cursor: 'pointer',
-  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-};
-
-// ── Ana Sayfa Bileşeni ───────────────────────────────────────────────────────
-
+/* ══ Main Component ════════════════════════════════════════════════ */
 export default function ZesPerformancePage({ date, onDateChange }) {
-  // ── Stats carousel ────────────────────────────────────────────────────────
-  const [recDistData,   setRecDistData]   = useState(null);
-  const [matrixData,    setMatrixData]    = useState(null);
-  const [underutilData, setUnderutilData] = useState(null);
+  const [dateConfirmed, setDateConfirmed] = useState(!!date);
+
+  const [recDistData,    setRecDistData]    = useState(null);
+  const [matrixData,     setMatrixData]     = useState(null);
+  const [underutilData,  setUnderutilData]  = useState(null);
+  const [overutilData,   setOverutilData]   = useState(null);
   const [statsLoading,  setStatsLoading]  = useState(false);
   const [statsError,    setStatsError]    = useState(null);
   const [chartIndex,    setChartIndex]    = useState(0);
-
-  // ── Backfill modal ────────────────────────────────────────────────────────
   const [showBackfillModal, setShowBackfillModal] = useState(false);
 
-  // ── Search ────────────────────────────────────────────────────────────────
   const [filters, setFilters] = useState({
     demandTier: '', supplyTier: '', recommendationCode: '',
     cityName: '', stationName: '', minUtilizationPct: '', maxUtilizationPct: '',
@@ -397,58 +610,49 @@ export default function ZesPerformancePage({ date, onDateChange }) {
   const [searchError,   setSearchError]   = useState(null);
   const [searched,      setSearched]      = useState(false);
 
-  // ── Stats yükleme ─────────────────────────────────────────────────────────
   const loadStats = useCallback(async () => {
+    if (!dateConfirmed) return;
     setStatsLoading(true);
     setStatsError(null);
     try {
-      const [rec, matrix, under] = await Promise.all([
+      const [rec, matrix, under, over] = await Promise.all([
         fetchStationPerformanceRecommendationDistribution({ date }),
         fetchStationPerformanceDemandSupplyMatrix({ date }),
         fetchStationPerformanceUnderutilized({ date, size: 20 }),
+        fetchStationPerformanceOverutilized({ date, size: 20 }),
       ]);
       setRecDistData(rec);
       setMatrixData(matrix);
       setUnderutilData(under);
+      setOverutilData(over);
     } catch (e) {
       setStatsError(e.message);
     } finally {
       setStatsLoading(false);
     }
-  }, [date]);
+  }, [date, dateConfirmed]);
 
   useEffect(() => { loadStats(); }, [loadStats]);
 
-  // ── Klavye navigasyonu ────────────────────────────────────────────────────
   const charts = [
-    {
-      title: 'Tavsiye Kodu Dağılımı',
-      node:  <RecommendationPieChart data={recDistData} />,
-    },
-    {
-      title: 'Talep × Arz Matrisi',
-      node:  <DemandSupplyChart data={matrixData} />,
-    },
-    {
-      title: 'Düşük Kullanımlı İstasyonlar — Top 20',
-      node:  <UnderutilizedTable rows={underutilData} />,
-    },
+    { title: 'Tavsiye Kodu Dağılımı',                  node: <RecommendationChart data={recDistData} /> },
+    { title: 'Talep × Arz Matrisi',                    node: <DemandSupplyChart data={matrixData} /> },
+    { title: 'Düşük Kullanımlı İstasyonlar — Top 20',  node: <UnderutilizedTable rows={underutilData} /> },
+    { title: 'Yeni İstasyon Kurulması Gereken Bölgeler — Top 20', node: <OverutilizedTable rows={overutilData} /> },
   ];
-
   const total = charts.length;
   const prev  = () => setChartIndex(i => (i - 1 + total) % total);
   const next  = () => setChartIndex(i => (i + 1) % total);
 
   useEffect(() => {
-    function onKey(e) {
+    const onKey = e => {
       if (e.key === 'ArrowLeft')  prev();
       if (e.key === 'ArrowRight') next();
-    }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // ── Arama ─────────────────────────────────────────────────────────────────
   const doSearch = useCallback(async (pageOverride) => {
     const p = pageOverride ?? page;
     setSearchLoading(true);
@@ -457,17 +661,17 @@ export default function ZesPerformancePage({ date, onDateChange }) {
     try {
       const data = await fetchStationPerformanceSearch({
         date,
-        demandTier:        filters.demandTier        || undefined,
-        supplyTier:        filters.supplyTier        || undefined,
-        recommendationCode:filters.recommendationCode|| undefined,
-        cityName:          filters.cityName          || undefined,
-        stationName:       filters.stationName       || undefined,
-        minUtilizationPct: filters.minUtilizationPct !== '' ? Number(filters.minUtilizationPct) : undefined,
-        maxUtilizationPct: filters.maxUtilizationPct !== '' ? Number(filters.maxUtilizationPct) : undefined,
-        sort:              filters.sort,
-        order:             filters.order,
-        from:              p * PAGE_SIZE,
-        size:              PAGE_SIZE,
+        demandTier:         filters.demandTier         || undefined,
+        supplyTier:         filters.supplyTier         || undefined,
+        recommendationCode: filters.recommendationCode || undefined,
+        cityName:           filters.cityName           || undefined,
+        stationName:        filters.stationName        || undefined,
+        minUtilizationPct:  filters.minUtilizationPct !== '' ? Number(filters.minUtilizationPct) : undefined,
+        maxUtilizationPct:  filters.maxUtilizationPct !== '' ? Number(filters.maxUtilizationPct) : undefined,
+        sort:               filters.sort,
+        order:              filters.order,
+        from:               p * PAGE_SIZE,
+        size:               PAGE_SIZE,
       });
       setSearchResults(data);
     } catch (e) {
@@ -486,171 +690,215 @@ export default function ZesPerformancePage({ date, onDateChange }) {
   const hasNext = searchResults && searchResults.length === PAGE_SIZE;
   const current = charts[chartIndex];
 
+  function handleDateSelect(d) {
+    onDateChange(d);
+    setDateConfirmed(true);
+  }
+
+  /* Chart header controls */
+  const chartControls = (
+    <>
+      <div className="ctrl-spacer" />
+      <Button onClick={loadStats} disabled={statsLoading} variant="secondary" icon="↻" size="sm">
+        {statsLoading ? 'Yükleniyor…' : 'Yenile'}
+      </Button>
+      <Button onClick={() => setShowBackfillModal(true)} variant="primary" size="sm">
+        Index Senkronize Et
+      </Button>
+    </>
+  );
+
   return (
     <>
-      {/* ── Kontroller ──────────────────────────────────────────────────── */}
-      <div className="page-controls">
-        <div className="controls">
-          <label>Tarih</label>
-          <input type="date" value={date} onChange={e => onDateChange(e.target.value)} />
-          <button onClick={loadStats} disabled={statsLoading}>
-            {statsLoading ? 'Yükleniyor…' : 'Yenile'}
-          </button>
-          <button
-            onClick={() => setShowBackfillModal(true)}
-            style={{
-              background: '#3b82f6',
-              color: '#fff',
-              border: 'none',
-              padding: '8px 16px',
-              borderRadius: 6,
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
+      <DateCalendar
+        selectedDate={date}
+        onSelect={handleDateSelect}
+        fetchDates={fetchStationPerformanceAvailableDates}
+        label="Performans Tarihi Seç"
+      />
+
+      {!dateConfirmed ? (
+        <EmptyState icon="⚡" title="Tarih seçin" description="Yukarıdaki takvimden veri bulunan bir tarih seçin" />
+      ) : (
+        <>
+          {statsError && <div className="error">{statsError}</div>}
+
+          {/* Stats carousel */}
+          <ChartCard
+            title={current.title}
+            counter={chartIndex}
+            total={total}
+            onPrev={prev}
+            onNext={next}
+            controls={chartControls}
+            dots={total}
+            activeIndex={chartIndex}
+            onDotClick={setChartIndex}
           >
-            📊 Index Senkronize Et
-          </button>
-        </div>
-      </div>
+            {statsLoading
+              ? <div className="loading">Yükleniyor…</div>
+              : current.node}
+          </ChartCard>
 
-      {statsError && <div className="error">{statsError}</div>}
-
-      {/* ── İstatistik Carousel ─────────────────────────────────────────── */}
-      <div className="card" style={{ position: 'relative', padding: '24px 48px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <button onClick={prev} style={arrowStyle}>&#8592;</button>
-          <h2 style={{ margin: 0, color: '#e2e8f0', fontSize: 15, textAlign: 'center', flex: 1 }}>
-            {current.title}
-          </h2>
-          <button onClick={next} style={arrowStyle}>&#8594;</button>
-        </div>
-
-        <div style={{ minHeight: 340 }}>
-          {statsLoading ? <div className="loading">Yükleniyor…</div> : current.node}
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 16 }}>
-          {charts.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setChartIndex(i)}
-              style={{
-                width: 8, height: 8, borderRadius: '50%', border: 'none',
-                background: i === chartIndex ? '#38bdf8' : '#334155',
-                cursor: 'pointer', padding: 0, transition: 'background 0.2s',
-              }}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* ── İstasyon Performans Arama ───────────────────────────────────── */}
-      <div className="card" style={{ marginTop: 16 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase',
-          letterSpacing: '0.08em', marginBottom: 16 }}>
-          İstasyon Performans Arama
-        </div>
-
-        {/* Tile filtreler */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 16 }}>
-          <div>
-            <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-              Talep Seviyesi
+          {/* Search panel */}
+          <div className="card">
+            <div className="card-header">
+              <div>
+                <div className="card-title">İstasyon Performans Arama</div>
+                <div className="card-subtitle">Filtrele ve sırala</div>
+              </div>
             </div>
-            <TileGroup options={DEMAND_OPTIONS} value={filters.demandTier}
-              onChange={v => setFilter('demandTier', v)} />
-          </div>
-          <div>
-            <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-              Arz Seviyesi
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+              {/* Tile filters */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20 }}>
+                <div>
+                  <SectionLabel>Talep Seviyesi</SectionLabel>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {DEMAND_OPTS.map(o => (
+                      <FilterChip
+                        key={o.value}
+                        label={o.label}
+                        color={o.color}
+                        active={filters.demandTier === o.value}
+                        onClick={() => setFilter('demandTier', o.value)}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <SectionLabel>Arz Seviyesi</SectionLabel>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {SUPPLY_OPTS.map(o => (
+                      <FilterChip
+                        key={o.value}
+                        label={o.label}
+                        color={o.color}
+                        active={filters.supplyTier === o.value}
+                        onClick={() => setFilter('supplyTier', o.value)}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <SectionLabel>Tavsiye Kodu</SectionLabel>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {/* "Tümü" chip */}
+                    <FilterChip
+                      label="Tümü"
+                      color="#64748b"
+                      active={filters.recommendationCode === ''}
+                      onClick={() => setFilter('recommendationCode', '')}
+                    />
+                    {/* Rich chips with demand/supply sub-label */}
+                    {Object.entries(REC_META).map(([code, meta]) => {
+                      const active = filters.recommendationCode === code;
+                      return (
+                        <button
+                          key={code}
+                          onClick={() => setFilter('recommendationCode', code)}
+                          style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                            padding: '5px 10px', borderRadius: 'var(--rx-full)',
+                            border: `1px solid ${active ? meta.color : 'var(--bd-subtle)'}`,
+                            background: active ? `${meta.color}22` : 'var(--bg-subtle)',
+                            cursor: 'pointer', transition: 'all 120ms',
+                          }}
+                        >
+                          <span style={{
+                            fontSize: 11, fontWeight: 600, lineHeight: 1.3,
+                            color: active ? meta.color : 'var(--tx-secondary)',
+                          }}>
+                            {meta.label}
+                          </span>
+                          <span style={{ fontSize: 9, color: 'var(--tx-disabled)', lineHeight: 1.2 }}>
+                            T:{meta.demand} · A:{meta.supply}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="divider" />
+
+              {/* Text + numeric filters */}
+              <div className="filter-grid">
+                <div className="filter-field">
+                  <label>Şehir</label>
+                  <input type="text" placeholder="örn. Ankara" value={filters.cityName}
+                    onChange={e => setFilter('cityName', e.target.value)} onKeyDown={handleKeyDown} />
+                </div>
+                <div className="filter-field">
+                  <label>İstasyon Adı</label>
+                  <input type="text" placeholder="kısmi ad" value={filters.stationName}
+                    onChange={e => setFilter('stationName', e.target.value)} onKeyDown={handleKeyDown} />
+                </div>
+                <div className="filter-field">
+                  <label>Min Kullanım %</label>
+                  <input type="number" min={0} max={100} placeholder="0" value={filters.minUtilizationPct}
+                    onChange={e => setFilter('minUtilizationPct', e.target.value)} onKeyDown={handleKeyDown} />
+                </div>
+                <div className="filter-field">
+                  <label>Max Kullanım %</label>
+                  <input type="number" min={0} max={100} placeholder="100" value={filters.maxUtilizationPct}
+                    onChange={e => setFilter('maxUtilizationPct', e.target.value)} onKeyDown={handleKeyDown} />
+                </div>
+                <div className="filter-field">
+                  <label>Sıralama</label>
+                  <select value={filters.sort} onChange={e => setFilter('sort', e.target.value)}>
+                    {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <div className="filter-field">
+                  <label>Yön</label>
+                  <select value={filters.order} onChange={e => setFilter('order', e.target.value)}>
+                    <option value="desc">Azalan ↓</option>
+                    <option value="asc">Artan ↑</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <Button onClick={handleSearch} disabled={searchLoading} variant="primary" size="lg">
+                  {searchLoading ? 'Aranıyor…' : 'Ara'}
+                </Button>
+              </div>
             </div>
-            <TileGroup options={SUPPLY_OPTIONS} value={filters.supplyTier}
-              onChange={v => setFilter('supplyTier', v)} />
           </div>
-          <div>
-            <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-              Tavsiye Kodu
+
+          {/* Search error */}
+          {searchError && <div className="error">{searchError}</div>}
+
+          {/* Results */}
+          {searched && !searchLoading && (
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">Arama Sonuçları</div>
+                  {searchResults && (
+                    <div className="card-subtitle">
+                      {searchResults.length} kayıt — {page + 1}. sayfa
+                    </div>
+                  )}
+                </div>
+                <div className="pagination">
+                  <button onClick={() => goPage(page - 1)} disabled={!hasPrev || searchLoading}>← Önceki</button>
+                  <span style={{ color: 'var(--tx-tertiary)', padding: '0 8px', fontSize: 12, fontFamily: 'var(--font-mono)' }}>
+                    {page + 1}
+                  </span>
+                  <button onClick={() => goPage(page + 1)} disabled={!hasNext || searchLoading}>Sonraki →</button>
+                </div>
+              </div>
+              <SearchResultTable rows={searchResults} />
             </div>
-            <TileGroup options={REC_OPTIONS} value={filters.recommendationCode}
-              onChange={v => setFilter('recommendationCode', v)} />
-          </div>
-        </div>
+          )}
 
-        <div style={{ borderTop: '1px solid #1e293b', marginBottom: 16 }} />
-
-        {/* Metin + sayı filtreler */}
-        <div className="filter-grid">
-          <div className="filter-field">
-            <label>Şehir</label>
-            <input type="text" placeholder="örn. Ankara" value={filters.cityName}
-              onChange={e => setFilter('cityName', e.target.value)} onKeyDown={handleKeyDown} />
-          </div>
-          <div className="filter-field">
-            <label>İstasyon Adı</label>
-            <input type="text" placeholder="kısmi ad" value={filters.stationName}
-              onChange={e => setFilter('stationName', e.target.value)} onKeyDown={handleKeyDown} />
-          </div>
-          <div className="filter-field">
-            <label>Min Kullanım %</label>
-            <input type="number" min={0} max={100} placeholder="0" value={filters.minUtilizationPct}
-              onChange={e => setFilter('minUtilizationPct', e.target.value)} onKeyDown={handleKeyDown} />
-          </div>
-          <div className="filter-field">
-            <label>Max Kullanım %</label>
-            <input type="number" min={0} max={100} placeholder="100" value={filters.maxUtilizationPct}
-              onChange={e => setFilter('maxUtilizationPct', e.target.value)} onKeyDown={handleKeyDown} />
-          </div>
-          <div className="filter-field">
-            <label>Sıralama</label>
-            <select value={filters.sort} onChange={e => setFilter('sort', e.target.value)}>
-              {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>Yön</label>
-            <select value={filters.order} onChange={e => setFilter('order', e.target.value)}>
-              <option value="desc">Azalan ↓</option>
-              <option value="asc">Artan ↑</option>
-            </select>
-          </div>
-        </div>
-
-        <div style={{ marginTop: 16 }}>
-          <button onClick={handleSearch} disabled={searchLoading} className="btn-search">
-            {searchLoading ? 'Aranıyor…' : 'Ara'}
-          </button>
-        </div>
-      </div>
-
-      {searchError && <div className="error" style={{ marginTop: 16 }}>{searchError}</div>}
-
-      {searched && !searchLoading && (
-        <div className="card" style={{ marginTop: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <div>
-              <span style={{ fontWeight: 600, color: '#e2e8f0', fontSize: 15 }}>Sonuçlar</span>
-              {searchResults && (
-                <span style={{ marginLeft: 8, fontSize: 12, color: '#64748b' }}>
-                  {searchResults.length} kayıt — Sayfa {page + 1}
-                </span>
-              )}
-            </div>
-            <div className="pagination">
-              <button onClick={() => goPage(page - 1)} disabled={!hasPrev || searchLoading}>← Önceki</button>
-              <span style={{ color: '#94a3b8', padding: '0 12px', fontSize: 13 }}>{page + 1}</span>
-              <button onClick={() => goPage(page + 1)} disabled={!hasNext || searchLoading}>Sonraki →</button>
-            </div>
-          </div>
-          <SearchResultTable rows={searchResults} />
-        </div>
-      )}
-
-      {/* ── Backfill Modal ──────────────────────────────────────────────── */}
-      {showBackfillModal && (
-        <PerformanceBackfillModal
-          onClose={() => setShowBackfillModal(false)}
-        />
+          {showBackfillModal && (
+            <PerformanceBackfillModal onClose={() => setShowBackfillModal(false)} />
+          )}
+        </>
       )}
     </>
   );

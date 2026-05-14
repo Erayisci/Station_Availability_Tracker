@@ -7,6 +7,7 @@ export default function PerformanceBackfillModal({ onClose }) {
   const [startDate, setStartDate] = useState(monthAgo);
   const [endDate, setEndDate] = useState(today);
   const [radius, setRadius] = useState(1.0);
+  const [force, setForce] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
 
@@ -17,7 +18,7 @@ export default function PerformanceBackfillModal({ onClose }) {
     try {
       const response = await fetch(
         `/zes/availability/station-performance/backfill?` +
-        `startDate=${startDate}&endDate=${endDate}&radius=${radius}`,
+        `startDate=${startDate}&endDate=${endDate}&radius=${radius}&force=${force}`,
         { method: 'POST' }
       );
 
@@ -52,10 +53,33 @@ export default function PerformanceBackfillModal({ onClose }) {
         <h2 style={{ color: '#e2e8f0', marginBottom: 8, fontSize: 18 }}>
           Performance Index Senkronizasyonu
         </h2>
-        <p style={{ color: '#94a3b8', fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
+        <p style={{ color: '#94a3b8', fontSize: 14, marginBottom: 16, lineHeight: 1.5 }}>
           Belirtilen tarih aralığında connector verisi olan ancak performance
           index'i eksik olan günler için otomatik index oluşturulacak.
         </p>
+
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20,
+          padding: '10px 14px', borderRadius: 8, cursor: 'pointer',
+          background: force ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.03)',
+          border: `1px solid ${force ? 'rgba(239,68,68,0.35)' : '#2d3748'}`,
+          transition: 'all 0.15s',
+        }}>
+          <input
+            type="checkbox"
+            checked={force}
+            onChange={e => setForce(e.target.checked)}
+            style={{ width: 15, height: 15, accentColor: '#ef4444', cursor: 'pointer' }}
+          />
+          <div>
+            <div style={{ color: force ? '#ef4444' : '#94a3b8', fontSize: 13, fontWeight: 600 }}>
+              Mevcut indexleri yeniden build et
+            </div>
+            <div style={{ color: '#475569', fontSize: 11, marginTop: 2 }}>
+              İşaretlenirse var olan indexler silinip yeni mantıkla yeniden oluşturulur
+            </div>
+          </div>
+        </label>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
           <div>
@@ -239,6 +263,7 @@ function StatBox({ label, value, color }) {
 function StatusBadge({ status }) {
   const config = {
     BUILT:    { color: '#10b981', label: 'BUILT' },
+    REBUILT:  { color: '#ef4444', label: 'REBUILT' },
     EXISTING: { color: '#3b82f6', label: 'EXISTS' },
     SKIPPED:  { color: '#f59e0b', label: 'SKIP' },
     FAILED:   { color: '#ef4444', label: 'FAIL' },

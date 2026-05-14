@@ -65,6 +65,19 @@ export function fetchStationPerformanceUnderutilized({ date, size = 20 } = {}) {
   return fetchJson(`${BASE}/station-performance/underutilized${q ? '?' + q : ''}`);
 }
 
+export function fetchStationPerformanceOverutilized({ date, size = 20 } = {}) {
+  const q = toQuery({ date, size });
+  return fetchJson(`${BASE}/station-performance/overutilized${q ? '?' + q : ''}`);
+}
+
+export function fetchConnectorTransformAvailableDates() {
+  return fetchJson(`${BASE}/connector-transform/available-dates`);
+}
+
+export function fetchStationPerformanceAvailableDates() {
+  return fetchJson(`${BASE}/station-performance/available-dates`);
+}
+
 export function fetchStationPerformanceSearch({
   date, demandTier, supplyTier, recommendationCode, cityName, stationName,
   minUtilizationPct, maxUtilizationPct, sort, order = 'desc', from = 0, size = 20,
