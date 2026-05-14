@@ -469,6 +469,15 @@ public class ZesConnectorTransformAnalysisService {
                 .collect(Collectors.toList());
     }
 
+    public List<String> availableDates() throws IOException {
+        var response = client.indices().get(r -> r.index(INDEX_PREFIX + "-*"));
+        return response.result().keySet().stream()
+                .map(name -> name.replace(INDEX_PREFIX + "-", ""))
+                .filter(d -> d.matches("\\d{4}-\\d{2}-\\d{2}"))
+                .sorted(Comparator.reverseOrder())
+                .collect(Collectors.toList());
+    }
+
     @PreDestroy
     public void close() throws IOException {
         restClient.close();

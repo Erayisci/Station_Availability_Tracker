@@ -5,28 +5,18 @@ import {
 
 const ENV_COLORS = {
   RETAIL:      '#f87171',
-  COMMERCIAL:  '#38bdf8',
-  OFFICE:      '#facc15',
-  RESIDENTIAL: '#4ade80',
-  UNKNOWN:     '#64748b',
+  COMMERCIAL:  '#60a5fa',
+  OFFICE:      '#fbbf24',
+  RESIDENTIAL: '#34d399',
+  UNKNOWN:     '#94a3b8',
 };
 
 const STATUSES = ['Charging', 'Available', 'Unavailable', 'Faulted', 'SuspendedEV', 'SuspendedEVSE', 'Preparing', 'Finishing', 'Reserved'];
 
-const STATUS_COLORS = {
-  Charging:      '#f87171',
-  Available:     '#4ade80',
-  Unavailable:   '#94a3b8',
-  Faulted:       '#ef4444',
-  SuspendedEV:   '#fb923c',
-  SuspendedEVSE: '#c084fc',
-  Preparing:     '#38bdf8',
-  Finishing:     '#facc15',
-  Reserved:      '#a78bfa',
-};
+const ENV_PALETTE = ['#34d399', '#60a5fa', '#fbbf24', '#f87171', '#8b5cf6'];
 
-function colorFor(env) {
-  return ENV_COLORS[env] ?? '#94a3b8';
+function colorFor(env, idx = 0) {
+  return ENV_COLORS[env] ?? ENV_PALETTE[idx % ENV_PALETTE.length];
 }
 
 function transformData(raw, status, percent) {
@@ -88,77 +78,71 @@ export default function EnvTimeSlotChart({ data, percent = true }) {
           <select
             value={status}
             onChange={e => setStatus(e.target.value)}
-            style={{
-              background: '#0f172a',
-              border: `2px solid ${STATUS_COLORS[status] ?? '#334155'}`,
-              borderRadius: 8,
-              color: STATUS_COLORS[status] ?? '#e2e8f0',
-              fontSize: 13,
-              fontWeight: 700,
-              padding: '5px 12px',
-              outline: 'none',
-              cursor: 'pointer',
-              boxShadow: `0 0 8px ${(STATUS_COLORS[status] ?? '#334155')}44`,
-              transition: 'border-color 0.15s, box-shadow 0.15s',
-            }}
+            className="ctrl-select"
+            style={{ fontSize: 12 }}
           >
             {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {envTypes.map(env => (
-            <button
-              key={env}
-              onClick={() => toggleEnv(env)}
-              style={{
-                padding: '3px 10px',
-                borderRadius: 999,
-                border: `2px solid ${colorFor(env)}`,
-                background: hidden.has(env) ? 'transparent' : colorFor(env) + '33',
-                color: hidden.has(env) ? '#64748b' : colorFor(env),
-                cursor: 'pointer',
-                fontSize: 12,
-                fontWeight: 600,
-                opacity: hidden.has(env) ? 0.45 : 1,
-                transition: 'all 0.15s',
-              }}
-            >
-              {env}
-            </button>
-          ))}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {envTypes.map((env, i) => {
+            const c = colorFor(env, i);
+            return (
+              <button
+                key={env}
+                onClick={() => toggleEnv(env)}
+                style={{
+                  padding: '3px 10px',
+                  borderRadius: 3,
+                  border: `1px solid ${hidden.has(env) ? '#1a2535' : c + '55'}`,
+                  background: hidden.has(env) ? 'transparent' : c + '14',
+                  color: hidden.has(env) ? '#3d5268' : c,
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontFamily: 'var(--font-data)',
+                  fontWeight: 600,
+                  transition: 'all 0.15s',
+                }}
+              >
+                {env}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={entries} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-          <XAxis dataKey="time" tick={{ fill: '#94a3b8', fontSize: 11 }} interval="preserveStartEnd" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#1a2535" />
+          <XAxis dataKey="time" tick={{ fill: '#3d5268', fontSize: 11 }} interval="preserveStartEnd" />
           <YAxis
-            tick={{ fill: '#94a3b8', fontSize: 11 }}
+            tick={{ fill: '#3d5268', fontSize: 11 }}
             tickFormatter={v => percent ? `${v}%` : v.toLocaleString()}
             domain={percent ? [0, 100] : ['auto', 'auto']}
           />
           <Tooltip
             formatter={(value, name) => [percent ? `${value}%` : value.toLocaleString(), name]}
-            contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}
-            labelStyle={{ color: '#e2e8f0' }}
-            itemStyle={{ color: '#cbd5e1' }}
+            contentStyle={{ background: '#0f1623', border: '1px solid #233047', borderRadius: 5, fontSize: 12 }}
+            labelStyle={{ color: '#eef2f7' }}
+            itemStyle={{ color: '#7d93a8' }}
           />
           <Legend
-            formatter={value => (
-              <span style={{ color: colorFor(value), fontWeight: 600 }}>{value}</span>
+            formatter={(value, _, i) => (
+              <span style={{ color: colorFor(value, i), fontWeight: 600, fontSize: 11, fontFamily: 'var(--font-data)' }}>
+                {value}
+              </span>
             )}
           />
-          {visible.map(env => (
+          {visible.map((env, i) => (
             <Line
               key={env}
               type="monotone"
               dataKey={env}
-              stroke={colorFor(env)}
+              stroke={colorFor(env, i)}
               strokeWidth={2}
               dot={false}
-              activeDot={{ r: 4 }}
+              activeDot={{ r: 4, stroke: '#080d18', strokeWidth: 2 }}
             />
           ))}
         </LineChart>

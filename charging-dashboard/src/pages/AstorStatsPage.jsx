@@ -1,23 +1,23 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchAstorTimeSlot, fetchAstorByLocation } from '../api/astorApi';
+import { ChartCard, SegmentedControl, Button, EmptyState } from '../components/ui';
 import TimeSlotChart     from '../components/TimeSlotChart';
 import CityDurationChart from '../components/CityDurationChart';
 
-const ASTOR_COLORS = {
-  available:   '#4ade80',  // yeşil
-  inUse:       '#f97316',  // turuncu
-  offline:     '#64748b',  // koyu gri
-  faulted:     '#ef4444',  // kırmızı
-};
+const INTERVAL_OPTIONS = [
+  { value: 15, label: '15 dk' },
+  { value: 30, label: '30 dk' },
+  { value: 60, label: '60 dk' },
+];
 
 export default function AstorStatsPage({ date, onDateChange }) {
-  const [intervalMinutes,      setIntervalMinutes]      = useState(30);
-  const [tenantFilter,         setTenantFilter]         = useState('');
-  const [connectorTypeFilter,  setConnectorTypeFilter]  = useState('');
-  const [chartIndex,           setChartIndex]           = useState(0);
+  const [intervalMinutes,     setIntervalMinutes]     = useState(30);
+  const [tenantFilter,        setTenantFilter]        = useState('');
+  const [connectorTypeFilter, setConnectorTypeFilter] = useState('');
+  const [chartIndex,          setChartIndex]          = useState(0);
 
-  const [timeSlotData,   setTimeSlotData]   = useState(null);
-  const [locationData,   setLocationData]   = useState(null);
+  const [timeSlotData, setTimeSlotData] = useState(null);
+  const [locationData, setLocationData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
 
@@ -26,18 +26,17 @@ export default function AstorStatsPage({ date, onDateChange }) {
     setError(null);
     const results = await Promise.allSettled([
       fetchAstorTimeSlot({
-        date,
-        intervalMinutes,
-        tenantCode:           tenantFilter          || undefined,
-        connectorCurrentType: connectorTypeFilter   || undefined,
+        date, intervalMinutes,
+        tenantCode:           tenantFilter        || undefined,
+        connectorCurrentType: connectorTypeFilter || undefined,
       }),
       fetchAstorByLocation({ date }),
     ]);
     const [ts, loc] = results.map(r => r.status === 'fulfilled' ? r.value : null);
     setTimeSlotData(ts);
     setLocationData(loc);
-    const allFailed = results.every(r => r.status === 'rejected');
-    if (allFailed) setError(`Bu tarih için veri bulunamadı (${date}).`);
+    if (results.every(r => r.status === 'rejected'))
+      setError(`Bu tarih için veri bulunamadı (${date}).`);
     setLoading(false);
   }, [date, intervalMinutes, tenantFilter, connectorTypeFilter]);
 
@@ -45,17 +44,19 @@ export default function AstorStatsPage({ date, onDateChange }) {
 
   const withFallback = (data, node) =>
     data == null
-      ? <div className="loading">Bu tarih için veri bulunamadı ({date}).</div>
+      ? <EmptyState title="Veri yok" description={`${date} tarihine ait veri bulunamadı`} />
       : node;
 
   const charts = [
     {
-      title: `Zaman Dilimlerine Göre İstasyon Durumu (${intervalMinutes} dk aralık)`,
-      node:  withFallback(timeSlotData, <TimeSlotChart data={timeSlotData} colors={ASTOR_COLORS} />),
+      title:    'İstasyon Durumu — Zaman Dilimleri',
+      subtitle: `${intervalMinutes} dk aralık`,
+      node:     withFallback(timeSlotData, <TimeSlotChart data={timeSlotData} />),
     },
     {
-      title: 'İl Koduna Göre Toplam Süre Dağılımı (saat) — Top 20',
-      node:  withFallback(locationData, <CityDurationChart data={locationData} />),
+      title:    'İl Koduna Göre Toplam Şarj Süresi — Top 20',
+      subtitle: 'Saat cinsinden',
+      node:     withFallback(locationData, <CityDurationChart data={locationData} />),
     },
   ];
 
@@ -64,96 +65,81 @@ export default function AstorStatsPage({ date, onDateChange }) {
   const next  = () => setChartIndex(i => (i + 1) % total);
 
   useEffect(() => {
-    function onKey(e) {
+    const onKey = e => {
       if (e.key === 'ArrowLeft')  prev();
       if (e.key === 'ArrowRight') next();
-    }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   const current = charts[chartIndex];
 
+  const chartControls = (
+    <>
+      <div className="ctrl-field">
+        <span className="ctrl-label">Tarih</span>
+        <input
+          type="date"
+          value={date}
+          onChange={e => onDateChange(e.target.value)}
+          className="ctrl-input"
+        />
+      </div>
+      <div className="ctrl-divider" />
+      <div className="ctrl-field">
+        <span className="ctrl-label">Aralık</span>
+        <SegmentedControl
+          options={INTERVAL_OPTIONS}
+          value={intervalMinutes}
+          onChange={setIntervalMinutes}
+        />
+      </div>
+      <div className="ctrl-divider" />
+      <div className="ctrl-field">
+        <span className="ctrl-label">Marka</span>
+        <select value={tenantFilter} onChange={e => setTenantFilter(e.target.value)} className="ctrl-select">
+          <option value="">Tümü</option>
+          <option value="astor">ASTOR</option>
+          <option value="beefull">Beefull</option>
+        </select>
+      </div>
+      <div className="ctrl-divider" />
+      <div className="ctrl-field">
+        <span className="ctrl-label">Şarj Tipi</span>
+        <select value={connectorTypeFilter} onChange={e => setConnectorTypeFilter(e.target.value)} className="ctrl-select">
+          <option value="">Tümü</option>
+          <option value="ac">AC</option>
+          <option value="dc">DC</option>
+        </select>
+      </div>
+      <div className="ctrl-spacer" />
+      <Button onClick={load} disabled={loading} variant="secondary" icon="↻" size="sm">
+        {loading ? 'Yükleniyor…' : 'Yenile'}
+      </Button>
+    </>
+  );
+
   return (
     <>
-      <div className="page-controls">
-        <div className="controls">
-          <label>Tarih</label>
-          <input type="date" value={date} onChange={e => onDateChange(e.target.value)} />
-
-          <label>Zaman aralığı</label>
-          <select value={intervalMinutes} onChange={e => setIntervalMinutes(Number(e.target.value))}>
-            <option value={15}>15 dk</option>
-            <option value={30}>30 dk</option>
-            <option value={60}>60 dk</option>
-          </select>
-
-          <label>Marka</label>
-          <select value={tenantFilter} onChange={e => setTenantFilter(e.target.value)}>
-            <option value="">Tümü</option>
-            <option value="astor">ASTOR</option>
-            <option value="beefull">Beefull</option>
-          </select>
-
-          <label>Şarj tipi</label>
-          <select value={connectorTypeFilter} onChange={e => setConnectorTypeFilter(e.target.value)}>
-            <option value="">Tümü</option>
-            <option value="ac">AC</option>
-            <option value="dc">DC</option>
-          </select>
-
-          <button onClick={load} disabled={loading}>{loading ? 'Yükleniyor…' : 'Yenile'}</button>
-        </div>
-      </div>
-
       {error && <div className="error">{error}</div>}
 
-      <div className="card" style={{ position: 'relative', padding: '24px 48px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <button onClick={prev} style={arrowStyle}>&#8592;</button>
-          <h2 style={{ margin: 0, color: '#e2e8f0', fontSize: 15, textAlign: 'center', flex: 1 }}>
-            {current.title}
-          </h2>
-          <button onClick={next} style={arrowStyle}>&#8594;</button>
-        </div>
-
-        <div style={{ minHeight: 360 }}>
-          {loading ? <div className="loading">Yükleniyor…</div> : current.node}
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 16 }}>
-          {charts.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setChartIndex(i)}
-              style={{
-                width: 8, height: 8,
-                borderRadius: '50%',
-                border: 'none',
-                background: i === chartIndex ? '#f97316' : '#334155',
-                cursor: 'pointer',
-                padding: 0,
-                transition: 'background 0.2s',
-              }}
-            />
-          ))}
-        </div>
-      </div>
+      <ChartCard
+        title={current.title}
+        subtitle={current.subtitle}
+        counter={chartIndex}
+        total={total}
+        onPrev={prev}
+        onNext={next}
+        controls={chartControls}
+        dots={total}
+        activeIndex={chartIndex}
+        onDotClick={setChartIndex}
+      >
+        {loading
+          ? <div className="loading">Yükleniyor…</div>
+          : current.node}
+      </ChartCard>
     </>
   );
 }
-
-const arrowStyle = {
-  background: 'transparent',
-  border: '1px solid #334155',
-  borderRadius: 8,
-  color: '#94a3b8',
-  fontSize: 18,
-  width: 36,
-  height: 36,
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  flexShrink: 0,
-};
