@@ -215,7 +215,8 @@ public class ZesAnalysisController {
     public Map<String, Object> backfillPerformanceIndex(
             @RequestParam(name = "startDate") String startDate,
             @RequestParam(name = "endDate")   String endDate,
-            @RequestParam(name = "radius", defaultValue = "1.0") double radius) {
+            @RequestParam(name = "radius", defaultValue = "1.0") double radius,
+            @RequestParam(name = "force",  defaultValue = "false") boolean force) {
 
         LocalDate start = LocalDate.parse(startDate);
         LocalDate end   = LocalDate.parse(endDate);
@@ -241,17 +242,17 @@ public class ZesAnalysisController {
                     continue;
                 }
 
-                // Check if performance index already exists
-                if (performanceIndexService.indexExists(dateStr)) {
+                // Skip if already exists and force not requested
+                if (!force && performanceIndexService.indexExists(dateStr)) {
                     result.put("status", "EXISTING");
                     existing++;
                     details.add(result);
                     continue;
                 }
 
-                // Build performance index
+                // Build (or rebuild) performance index
                 int count = performanceIndexService.buildPerformanceIndex(dateStr, radius);
-                result.put("status", "BUILT");
+                result.put("status", force ? "REBUILT" : "BUILT");
                 result.put("stations", count);
                 built++;
                 details.add(result);
@@ -275,5 +276,15 @@ public class ZesAnalysisController {
             "failed", failed,
             "details", details
         );
+    }
+
+    @GetMapping("/connector-transform/available-dates")
+    public List<String> connectorTransformAvailableDates() throws IOException {
+        return transformAnalysisService.availableDates();
+    }
+
+    @GetMapping("/station-performance/available-dates")
+    public List<String> stationPerformanceAvailableDates() throws IOException {
+        return performanceQueryService.availableDates();
     }
 }

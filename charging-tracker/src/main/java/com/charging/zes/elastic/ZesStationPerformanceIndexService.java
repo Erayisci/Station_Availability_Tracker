@@ -29,8 +29,8 @@ import java.util.stream.Collectors;
  *   charging_utilization_pct   — total_charging_minutes / (connector_count * 1440) * 100
  *   nearby_stations_count      — verilen radius'ta API'den dönen istasyon sayısı
  *   nearby_connectors_count    — aynı istasyonlardaki toplam soket sayısı
- *   demand_supply_ratio        — charging_utilization_pct / max(nearby_connectors_count, 1)
- *                                (yüksek = talep çok, arz az → genişlet)
+ *   demand_supply_ratio        — charging_utilization_pct / max(effectiveSupply, 1.0), 0-100 arası
+ *                                (yüksek = yüksek talep + düşük efektif arz → öncelikli bölge)
  *   demand_tier                — HIGH / MEDIUM / LOW
  *   supply_tier                — FEW / MODERATE / MANY
  *   recommendation_code        — EXPAND / INCREASE_CAPACITY / OPTIMIZE / …
@@ -79,6 +79,7 @@ public class ZesStationPerformanceIndexService {
                                 .properties("nearby_stations_count",    p -> p.integer(i -> i))
                                 .properties("nearby_connectors_count",  p -> p.integer(i -> i))
                                 .properties("demand_supply_ratio",      p -> p.float_(f -> f))
+                                .properties("nearby_avg_utilization",   p -> p.float_(f -> f))
                                 .properties("demand_tier",              p -> p.keyword(k -> k))
                                 .properties("supply_tier",              p -> p.keyword(k -> k))
                                 .properties("recommendation_code",      p -> p.keyword(k -> k))
@@ -208,27 +209,51 @@ public class ZesStationPerformanceIndexService {
 
         System.out.printf("[PERF INDEX] Nearby API calls completed for %d stations%n", partialDocs.size());
 
+        // ── 3b. In-memory spatial lookup: komşu istasyonların ortalama kullanımı
+        // partialDocs'taki tüm istasyonları (stationId → [lat, lng, utilPct]) map'e al
+        Map<String, double[]> stationSpatial = new LinkedHashMap<>(partialDocs.size());
+        for (Map<String, Object> doc : partialDocs) {
+            stationSpatial.put(
+                (String) doc.get("station_id"),
+                new double[]{
+                    (Double) doc.get("lat"),
+                    (Double) doc.get("lng"),
+                    (Double) doc.get("charging_utilization_pct")
+                }
+            );
+        }
+
         // ── 4. Türetilmiş tier/tavsiye alanlarını hesapla + bulk index ───────
         int totalIndexed = 0;
         List<Map<String, Object>> batch = new ArrayList<>();
 
         for (Map<String, Object> doc : partialDocs) {
+            String stationId        = (String) doc.get("station_id");
             double utilizationPct   = (Double) doc.get("charging_utilization_pct");
             int    nearbyStations   = (int)    doc.get("nearby_stations_count");
             int    nearbyConnectors = (int)    doc.get("nearby_connectors_count");
 
-            double demandSupplyRatio = nearbyConnectors > 0
-                    ? utilizationPct / nearbyConnectors : utilizationPct;
+            // Komşu istasyonların ortalama kullanımı (kendi verimizden, API'siz)
+            double nearbyAvgUtil = computeNearbyAvgUtil(stationId, stationSpatial, radius);
+
+            // Efektif arz: yakın istasyon sayısı × ortalama boş kapasite oranı
+            double effectiveSupply = nearbyStations > 0 && nearbyAvgUtil >= 0
+                    ? nearbyStations * (1.0 - nearbyAvgUtil / 100.0)
+                    : nearbyStations;
+
+            // effectiveSupply bazlı normalize oran: her ikisi de aynı ölçekte (0-100)
+            double demandSupplyRatio = Math.min(100.0, utilizationPct / Math.max(effectiveSupply, 1.0));
 
             String demandTier = classifyDemand(utilizationPct);
-            String supplyTier = classifySupply(nearbyStations);
+            String supplyTier = classifySupply(nearbyStations, effectiveSupply);
             String recCode    = recommendationCode(demandTier, supplyTier);
 
-            doc.put("demand_supply_ratio",  round2(demandSupplyRatio));
-            doc.put("demand_tier",          demandTier);
-            doc.put("supply_tier",          supplyTier);
-            doc.put("recommendation_code",  recCode);
-            doc.put("recommendation",       recommendationText(recCode));
+            doc.put("demand_supply_ratio",    round2(demandSupplyRatio));
+            doc.put("nearby_avg_utilization", nearbyAvgUtil >= 0 ? round1(nearbyAvgUtil) : null);
+            doc.put("demand_tier",            demandTier);
+            doc.put("supply_tier",            supplyTier);
+            doc.put("recommendation_code",    recCode);
+            doc.put("recommendation",         recommendationText(recCode));
 
             batch.add(doc);
             if (batch.size() >= 200) {
@@ -320,11 +345,48 @@ public class ZesStationPerformanceIndexService {
         return "LOW";
     }
 
-    private String classifySupply(int nearbyCount) {
-        if (nearbyCount < 0)  return "UNKNOWN";
-        if (nearbyCount <= 2) return "FEW";
-        if (nearbyCount <= 5) return "MODERATE";
+    /**
+     * Efektif arz = yakın istasyon sayısı × (1 - ortalama_kullanım).
+     * Dolu istasyonlar kapasiteye katkı yapmaz; eşikler sayı bazlı sınıflandırmayla aynı tutulur.
+     */
+    private String classifySupply(int nearbyCount, double effectiveSupply) {
+        if (nearbyCount < 0)        return "UNKNOWN";
+        if (effectiveSupply <= 2.0) return "FEW";
+        if (effectiveSupply <= 5.0) return "MODERATE";
         return "MANY";
+    }
+
+    /**
+     * partialDocs'taki istasyonları kullanarak komşu istasyonların ortalama kullanımını hesaplar.
+     * ZES API'ye ek çağrı yapmaz; sadece o günün verisini kullanır.
+     *
+     * @return ortalama kullanım yüzdesi, komşu yoksa -1.0
+     */
+    private double computeNearbyAvgUtil(String stationId, Map<String, double[]> stationSpatial, double radius) {
+        double[] self = stationSpatial.get(stationId);
+        if (self == null) return -1.0;
+
+        double sumUtil  = 0.0;
+        int    count    = 0;
+        for (Map.Entry<String, double[]> entry : stationSpatial.entrySet()) {
+            if (entry.getKey().equals(stationId)) continue;
+            double[] other = entry.getValue();
+            if (haversineKm(self[0], self[1], other[0], other[1]) <= radius) {
+                sumUtil += other[2];
+                count++;
+            }
+        }
+        return count > 0 ? sumUtil / count : -1.0;
+    }
+
+    private double haversineKm(double lat1, double lng1, double lat2, double lng2) {
+        final double R = 6371.0;
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLng = Math.toRadians(lng2 - lng1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                 + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                 * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
     // ── Tavsiye matrisi ─────────────────────────────────────────────────────
@@ -352,15 +414,15 @@ public class ZesStationPerformanceIndexService {
 
     private String recommendationText(String code) {
         return switch (code) {
-            case "EXPAND"             -> "Yüksek talep, düşük arz: Bu bölgeye yeni istasyon inşa edilmeli.";
-            case "INCREASE_CAPACITY"  -> "Yüksek talep, orta arz: Mevcut istasyonlara ek soket eklenmeli.";
-            case "OPTIMIZE"           -> "Yüksek talep, yüksek rekabet: Şarj hızı ve fiyat optimizasyonu yapılmalı.";
-            case "MONITOR_GROWTH"     -> "Orta talep, düşük arz: Büyüme potansiyeli var, yakından izlenmeli.";
-            case "MAINTAIN"           -> "Orta talep, orta arz: Mevcut durum dengeli, koruma yeterli.";
-            case "IMPROVE_EFFICIENCY" -> "Orta talep, yüksek rekabet: Kullanıcı deneyimi ve verimlilik artırılmalı.";
-            case "MONITOR"            -> "Düşük talep, düşük arz: Bölge gelişimine göre yeniden değerlendir.";
-            case "REVIEW"             -> "Düşük talep, orta arz: Strateji gözden geçirilmeli.";
-            case "RELOCATE"           -> "Düşük talep, yüksek arz: İstasyonun farklı bir bölgeye taşınması düşünülmeli.";
+            case "EXPAND"             -> "Yüksek talep, düşük efektif arz: Bu bölgeye yeni ZES istasyonu kurulmalı.";
+            case "INCREASE_CAPACITY"  -> "Yüksek talep, orta efektif arz: Mevcut ZES istasyonlarına ek soket eklenmeli.";
+            case "OPTIMIZE"           -> "Yüksek talep, yüksek efektif arz: Bölge iyi servis alıyor; hizmet kalitesi ve şarj hızı artırılmalı.";
+            case "MONITOR_GROWTH"     -> "Orta talep, düşük efektif arz: Büyüme potansiyeli var, yatırım planlanmalı.";
+            case "MAINTAIN"           -> "Orta talep, orta efektif arz: Mevcut durum dengeli, korunmalı.";
+            case "IMPROVE_EFFICIENCY" -> "Orta talep, yüksek efektif arz: Bölgede kapasite fazlası var; kullanımı artırmak için tanıtım ve fiyat optimizasyonu yapılmalı.";
+            case "MONITOR"            -> "Düşük talep, düşük efektif arz: Bölge gelişimine göre yeniden değerlendirilmeli.";
+            case "REVIEW"             -> "Düşük talep, orta efektif arz: Yatırım gözden geçirilmeli.";
+            case "RELOCATE"           -> "Düşük talep, yüksek efektif arz: Bölge fazla kapasiteli; istasyon taşınması veya azaltılması değerlendirilmeli.";
             default                   -> "Yakın istasyon verisi alınamadı, manuel inceleme gerekli.";
         };
     }
@@ -379,7 +441,8 @@ public class ZesStationPerformanceIndexService {
     public boolean indexExists(String date) throws IOException {
         String indexName = TARGET_PREFIX + "-" +
             (date != null ? date : LocalDate.now().toString());
-        return client.indices().exists(r -> r.index(indexName)).value();
+        if (!client.indices().exists(r -> r.index(indexName)).value()) return false;
+        return client.count(r -> r.index(indexName)).count() > 0;
     }
 
     @PreDestroy
