@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { fetchPerfIndicesHealth, deletePerfIndex } from '../api/zesApi';
 
 const DAY_LABELS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 const MONTHS = [
@@ -29,6 +30,52 @@ export default function DateCalendar({ selectedDate, onSelect, fetchDates, label
   const [viewMonth, setViewMonth] = useState(parseInt(initial.slice(5, 7)) - 1);
   const [available, setAvailable] = useState(null); // null=loading
   const [fetchErr,  setFetchErr]  = useState(false);
+  const [healthMap, setHealthMap] = useState(null);  // Map<date, {status, reasons}> | null
+  const [deleting,  setDeleting]  = useState(false);
+  const [deleteErr, setDeleteErr] = useState(null);
+
+  function reloadHealth() {
+    return fetchPerfIndicesHealth()
+      .then(res => {
+        const m = new Map();
+        for (const row of res.indices || []) {
+          m.set(row.date, { status: row.status, reasons: row.reasons || [] });
+        }
+        setHealthMap(m);
+      })
+      .catch(() => setHealthMap(new Map()));
+  }
+
+  async function handleDelete(date) {
+    const selHealth = healthMap?.get(date);
+    const reasonStr = selHealth?.reasons?.length
+      ? `\n\nNedenler: ${selHealth.reasons.join(', ')}`
+      : '';
+    const ok = window.confirm(
+      `${date} performans indeksini ve bağlı tüm forecast indekslerini sileceksiniz.${reasonStr}\n\nDevam edilsin mi?`
+    );
+    if (!ok) return;
+    setDeleting(true);
+    setDeleteErr(null);
+    try {
+      const res = await deletePerfIndex(date);
+      const fcCount = (res.deleted_forecasts || []).length;
+      window.alert(
+        `Silindi: ${res.deleted_perf || '(perf yok)'}` +
+        (fcCount ? `\n+ ${fcCount} forecast indeksi düşürüldü` : '')
+      );
+      // Refresh lists and bounce selection off the deleted date
+      await Promise.all([
+        reloadHealth(),
+        fetchDates().then(d => setAvailable(new Set(d))).catch(() => {}),
+      ]);
+      if (selectedDate === date) onSelect(null);
+    } catch (err) {
+      setDeleteErr(err.message || 'Silinemedi');
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   useEffect(() => {
     setAvailable(null);
@@ -37,6 +84,10 @@ export default function DateCalendar({ selectedDate, onSelect, fetchDates, label
       .then(dates => setAvailable(new Set(dates)))
       .catch(() => { setFetchErr(true); setAvailable(new Set()); });
   }, [fetchDates]);
+
+  /* Best-effort: fetch perf-index health and overlay on cells.
+     If admin endpoint is unreachable, calendar still works — overlay just stays empty. */
+  useEffect(() => { reloadHealth(); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   /* When available dates load, jump to the most recent month that has data */
   useEffect(() => {
@@ -94,22 +145,55 @@ export default function DateCalendar({ selectedDate, onSelect, fetchDates, label
           </div>
         </div>
 
-        {selectedDate && (
-          <div style={{
-            background: 'var(--clr-success-dim)',
-            border: '1px solid var(--clr-success-ring)',
-            borderRadius: 'var(--rx-md)',
-            padding: '6px 12px',
-            textAlign: 'right',
-            flexShrink: 0,
-          }}>
-            <div style={{ fontSize: 10, color: 'var(--clr-success-text)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Seçili</div>
-            <div style={{ fontSize: 13, color: 'var(--clr-success-text)', fontWeight: 700, fontFamily: 'var(--font-mono)', letterSpacing: '0.02em' }}>
-              {selectedDate}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          {selectedDate && isSelectedUnhealthy(selectedDate, healthMap) && (
+            <button
+              onClick={() => handleDelete(selectedDate)}
+              disabled={deleting}
+              title={`${selectedDate} perf indeksini ve bağlı forecast'leri sil`}
+              style={{
+                background: deleting ? '#9ca3af' : '#dc2626',
+                color: '#fff',
+                border: '1px solid ' + (deleting ? '#9ca3af' : '#b91c1c'),
+                borderRadius: 'var(--rx-md)',
+                padding: '6px 12px',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: deleting ? 'wait' : 'pointer',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+                transition: 'all 120ms',
+              }}
+            >
+              {deleting ? 'Siliniyor…' : '🗑 Bozuk indexi sil'}
+            </button>
+          )}
+          {selectedDate && (
+            <div style={{
+              background: 'var(--clr-success-dim)',
+              border: '1px solid var(--clr-success-ring)',
+              borderRadius: 'var(--rx-md)',
+              padding: '6px 12px',
+              textAlign: 'right',
+            }}>
+              <div style={{ fontSize: 10, color: 'var(--clr-success-text)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Seçili</div>
+              <div style={{ fontSize: 13, color: 'var(--clr-success-text)', fontWeight: 700, fontFamily: 'var(--font-mono)', letterSpacing: '0.02em' }}>
+                {selectedDate}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
+      {deleteErr && (
+        <div style={{
+          padding: '8px 20px',
+          background: 'rgba(220,38,38,0.08)',
+          color: '#991b1b',
+          fontSize: 12,
+          borderBottom: '1px solid rgba(220,38,38,0.2)',
+        }}>
+          Silinemedi: {deleteErr}
+        </div>
+      )}
 
       {/* ── Month nav + grid ───────────────────────────────────── */}
       <div style={{ padding: '16px 20px 20px' }}>
@@ -148,14 +232,21 @@ export default function DateCalendar({ selectedDate, onSelect, fetchDates, label
             const isSel    = dateStr === selectedDate;
             const isToday  = dateStr === today;
             const canClick = isAvail && !isLoading;
+            const health   = healthMap ? healthMap.get(dateStr) : null;
+            const status   = health ? health.status : (isAvail ? 'HEALTHY' : null);
+
+            const baseTitle = isAvail ? `Veri mevcut — ${dateStr}` : dateStr;
+            const title = health && health.reasons.length > 0
+              ? `${baseTitle}\n${health.status}: ${health.reasons.join(', ')}`
+              : baseTitle;
 
             return (
               <button
                 key={i}
                 onClick={() => canClick && onSelect(dateStr)}
                 disabled={!canClick}
-                title={isAvail ? `Veri mevcut — ${dateStr}` : dateStr}
-                style={cellStyle(isAvail, isSel, isToday, isLoading)}
+                title={title}
+                style={cellStyle(isAvail, isSel, isToday, isLoading, status)}
               >
                 {day}
                 {isAvail && !isSel && (
@@ -163,8 +254,8 @@ export default function DateCalendar({ selectedDate, onSelect, fetchDates, label
                     position: 'absolute', bottom: 3, left: '50%',
                     transform: 'translateX(-50%)',
                     width: 3, height: 3, borderRadius: '50%',
-                    background: 'var(--clr-success)',
-                    opacity: 0.7,
+                    background: statusColor(status),
+                    opacity: 0.85,
                   }} />
                 )}
               </button>
@@ -176,8 +267,18 @@ export default function DateCalendar({ selectedDate, onSelect, fetchDates, label
         <div style={{ display: 'flex', gap: 16, marginTop: 14, flexWrap: 'wrap' }}>
           <LegendItem
             color="var(--clr-success)"
-            label="Veri mevcut"
+            label="Sağlam"
             dotFill="rgba(16,185,129,0.15)"
+          />
+          <LegendItem
+            color="#d97706"
+            label="Şüpheli"
+            dotFill="rgba(217,119,6,0.18)"
+          />
+          <LegendItem
+            color="#dc2626"
+            label="Bozuk"
+            dotFill="rgba(220,38,38,0.18)"
           />
           <LegendItem
             color="var(--accent)"
@@ -219,7 +320,35 @@ const navBtn = {
   transition: 'all 150ms', padding: 0,
 };
 
-function cellStyle(isAvail, isSel, isToday, isLoading) {
+function isSelectedUnhealthy(date, healthMap) {
+  if (!healthMap) return false;
+  const h = healthMap.get(date);
+  if (!h) return false;
+  return h.status === 'BROKEN' || h.status === 'SUSPICIOUS';
+}
+
+function statusColor(status) {
+  switch (status) {
+    case 'BROKEN':     return '#dc2626';
+    case 'SUSPICIOUS': return '#d97706';
+    case 'HEALTHY':    return 'var(--clr-success)';
+    default:           return 'var(--clr-success)';
+  }
+}
+
+function statusPalette(status) {
+  switch (status) {
+    case 'BROKEN':
+      return { bg: 'rgba(220,38,38,0.10)', border: 'rgba(220,38,38,0.32)', text: '#991b1b' };
+    case 'SUSPICIOUS':
+      return { bg: 'rgba(217,119,6,0.10)', border: 'rgba(217,119,6,0.30)', text: '#92400e' };
+    case 'HEALTHY':
+    default:
+      return { bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.18)', text: 'var(--clr-success-text)' };
+  }
+}
+
+function cellStyle(isAvail, isSel, isToday, isLoading, status) {
   const base = {
     position: 'relative',
     height: 34,
@@ -239,14 +368,17 @@ function cellStyle(isAvail, isSel, isToday, isLoading) {
     cursor: 'pointer',
     boxShadow: '0 2px 8px rgba(99,102,241,0.4)',
   };
-  if (isAvail) return {
-    ...base,
-    background: 'rgba(16,185,129,0.08)',
-    color: 'var(--clr-success-text)',
-    border: '1px solid rgba(16,185,129,0.18)',
-    cursor: 'pointer',
-    fontWeight: 500,
-  };
+  if (isAvail) {
+    const p = statusPalette(status);
+    return {
+      ...base,
+      background: p.bg,
+      color: p.text,
+      border: `1px solid ${p.border}`,
+      cursor: 'pointer',
+      fontWeight: 500,
+    };
+  }
   if (isToday) return {
     ...base,
     background: 'transparent',

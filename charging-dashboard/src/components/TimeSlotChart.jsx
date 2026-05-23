@@ -156,8 +156,16 @@ export default function TimeSlotChart({ data, colors, showChargingOnly = true })
           />
 
           <YAxis
+            yAxisId="other"
             tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
             stroke="var(--border-medium)"
+          />
+          <YAxis
+            yAxisId="charging"
+            orientation="right"
+            tick={{ fill: '#10b981', fontSize: 11 }}
+            stroke="#10b98166"
+            width={48}
           />
 
           <Tooltip
@@ -183,21 +191,18 @@ export default function TimeSlotChart({ data, colors, showChargingOnly = true })
           {viewMode === 'area' ? (
             <>
               <Area
+                yAxisId="charging"
                 type="monotone"
                 dataKey="Charging"
                 stroke="#10b981"
                 fill="url(#gradCharging)"
                 strokeWidth={3}
                 dot={false}
-                activeDot={{
-                  r: 6,
-                  fill: '#10b981',
-                  stroke: '#fff',
-                  strokeWidth: 2
-                }}
+                activeDot={{ r: 6, fill: '#10b981', stroke: '#fff', strokeWidth: 2 }}
               />
               {showChargingOnly && (
                 <Area
+                  yAxisId="other"
                   type="monotone"
                   dataKey="Other"
                   stroke="#475569"
@@ -211,20 +216,17 @@ export default function TimeSlotChart({ data, colors, showChargingOnly = true })
           ) : (
             <>
               <Line
+                yAxisId="charging"
                 type="monotone"
                 dataKey="Charging"
                 stroke="#10b981"
                 strokeWidth={3}
                 dot={{ fill: '#10b981', r: 3 }}
-                activeDot={{
-                  r: 6,
-                  fill: '#10b981',
-                  stroke: '#fff',
-                  strokeWidth: 2
-                }}
+                activeDot={{ r: 6, fill: '#10b981', stroke: '#fff', strokeWidth: 2 }}
               />
               {showChargingOnly && (
                 <Line
+                  yAxisId="other"
                   type="monotone"
                   dataKey="Other"
                   stroke="#475569"
