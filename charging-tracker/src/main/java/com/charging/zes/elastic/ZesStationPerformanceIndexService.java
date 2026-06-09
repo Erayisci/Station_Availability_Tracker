@@ -29,7 +29,8 @@ import java.util.stream.Collectors;
  *   charging_utilization_pct   — total_charging_minutes / (connector_count * 1440) * 100
  *   nearby_stations_count      — verilen radius'ta API'den dönen istasyon sayısı
  *   nearby_connectors_count    — aynı istasyonlardaki toplam soket sayısı
- *   demand_supply_ratio        — charging_utilization_pct / max(effectiveSupply, 1.0), 0-100 arası
+ *   effective_supply           — nearby_stations_count × (1 − nearby_avg_utilization/100); supply_tier'ı belirler
+ *   demand_supply_ratio        — utilizationPct × 10 / (5 + effectiveSupply), 0-100 arası
  *                                (yüksek = yüksek talep + düşük efektif arz → öncelikli bölge)
  *   demand_tier                — HIGH / MEDIUM / LOW
  *   supply_tier                — FEW / MODERATE / MANY
@@ -78,6 +79,7 @@ public class ZesStationPerformanceIndexService {
                                 .properties("charging_utilization_pct", p -> p.float_(f -> f))
                                 .properties("nearby_stations_count",    p -> p.integer(i -> i))
                                 .properties("nearby_connectors_count",  p -> p.integer(i -> i))
+                                .properties("effective_supply",         p -> p.float_(f -> f))
                                 .properties("demand_supply_ratio",      p -> p.float_(f -> f))
                                 .properties("nearby_avg_utilization",   p -> p.float_(f -> f))
                                 .properties("demand_tier",              p -> p.keyword(k -> k))
@@ -241,13 +243,15 @@ public class ZesStationPerformanceIndexService {
                     ? nearbyStations * (1.0 - nearbyAvgUtil / 100.0)
                     : nearbyStations;
 
-            // effectiveSupply bazlı normalize oran: her ikisi de aynı ölçekte (0-100)
-            double demandSupplyRatio = Math.min(100.0, utilizationPct / Math.max(effectiveSupply, 1.0));
+            // Michaelis-Menten: C=5 (MANY eşiği) yarı-doygunluk sabiti
+            // effectiveSupply=0 → ratio=2×util (100'e kırpılır), effectiveSupply=5 → ratio=util, ∞ → 0
+            double demandSupplyRatio = Math.min(100.0, utilizationPct * 10.0 / (5.0 + effectiveSupply));
 
             String demandTier = classifyDemand(utilizationPct);
             String supplyTier = classifySupply(nearbyStations, effectiveSupply);
             String recCode    = recommendationCode(demandTier, supplyTier);
 
+            doc.put("effective_supply",       round2(effectiveSupply));
             doc.put("demand_supply_ratio",    round2(demandSupplyRatio));
             doc.put("nearby_avg_utilization", nearbyAvgUtil >= 0 ? round1(nearbyAvgUtil) : null);
             doc.put("demand_tier",            demandTier);
