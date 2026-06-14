@@ -6,6 +6,7 @@ import {
   fetchZesEnvDistribution,
   fetchZesEnvTimeSlot,
   fetchConnectorTransformAvailableDates,
+  fetchEpdkConnectorSnapshotStats,
 } from '../api/zesApi';
 import { ChartCard, SegmentedControl, Button, EmptyState } from '../components/ui';
 import TimeSlotChart        from '../components/TimeSlotChart';
@@ -40,6 +41,7 @@ export default function ZesStatsPage({ date, onDateChange }) {
   const [cityDurationData, setCityDurationData] = useState(null);
   const [envDistData,      setEnvDistData]      = useState(null);
   const [envTimeSlotData,  setEnvTimeSlotData]  = useState(null);
+  const [epdkSnapshotData, setEpdkSnapshotData] = useState(null);
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState(null);
 
@@ -53,14 +55,16 @@ export default function ZesStatsPage({ date, onDateChange }) {
       fetchZesByCityDuration({ date }),
       fetchZesEnvDistribution(),
       fetchZesEnvTimeSlot({ date, intervalMinutes, connectorType: connectorTypeFilter || undefined }),
+      fetchEpdkConnectorSnapshotStats({ date }),
     ]);
-    const [ts, tl, city, envDist, envTs] = results.map(r => r.status === 'fulfilled' ? r.value : null);
+    const [ts, tl, city, envDist, envTs, epdk] = results.map(r => r.status === 'fulfilled' ? r.value : null);
     setTimeSlotData(ts);
     setTimelineData(tl);
     setCityDurationData(city);
     setEnvDistData(envDist);
     setEnvTimeSlotData(envTs);
-    if (results.every(r => r.status === 'rejected'))
+    setEpdkSnapshotData(epdk && Object.keys(epdk).length > 0 ? epdk : null);
+    if (results.slice(0, 5).every(r => r.status === 'rejected'))
       setError(`Bu tarih için veri bulunamadı (${date}).`);
     setLoading(false);
   }, [date, intervalMinutes, connectorTypeFilter, dateConfirmed]);
@@ -100,6 +104,11 @@ export default function ZesStatsPage({ date, onDateChange }) {
       title: 'Çevre Tipine Göre Soket Sayısı — Mutlak',
       subtitle: `${intervalMinutes} dk aralık`,
       node:  withFallback(envTimeSlotData, <EnvTimeSlotChart data={envTimeSlotData} percent={false} />),
+    },
+    {
+      title: 'EPDK Konnektör Durumu — Snapshot Zamanları',
+      subtitle: 'epdk_zes_connectors — 5 dk aralık',
+      node:  withFallback(epdkSnapshotData, <TimeSlotChart data={epdkSnapshotData} />),
     },
   ];
 

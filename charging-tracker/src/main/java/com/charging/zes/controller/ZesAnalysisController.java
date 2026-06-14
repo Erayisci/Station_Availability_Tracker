@@ -1,6 +1,11 @@
 package com.charging.zes.controller;
 
+import com.charging.zes.elastic.EpdkConnectorSnapshotService;
 import com.charging.zes.elastic.ZesAnalysisService;
+import com.charging.zes.elastic.ZesCityAnalysisService;
+import com.charging.zes.elastic.ZesOpportunityService;
+import com.charging.zes.elastic.ZesForecastService;
+import com.charging.zes.elastic.ZesPricingService;
 import com.charging.zes.elastic.ZesConnectorTransformAnalysisService;
 import com.charging.zes.elastic.ZesConnectorTransformService;
 import com.charging.zes.elastic.ZesEnvironmentAnalysisService;
@@ -25,6 +30,9 @@ public class ZesAnalysisController {
     // private ZesAnalysisService analysisService;
 
     @Autowired
+    private EpdkConnectorSnapshotService epdkSnapshotService;
+
+    @Autowired
     private ZesConnectorTransformAnalysisService transformAnalysisService;
 
     @Autowired
@@ -38,6 +46,18 @@ public class ZesAnalysisController {
 
     @Autowired
     private ZesStationPerformanceQueryService performanceQueryService;
+
+    @Autowired
+    private ZesCityAnalysisService cityAnalysisService;
+
+    @Autowired
+    private ZesOpportunityService opportunityService;
+
+    @Autowired
+    private ZesForecastService forecastService;
+
+    @Autowired
+    private ZesPricingService pricingService;
 
     // Removed: /stats/by-connector-type (unused by UI)
     // Removed: /stats/by-province (unused by UI)
@@ -276,6 +296,197 @@ public class ZesAnalysisController {
             "failed", failed,
             "details", details
         );
+    }
+
+    // ── City Analysis (Türkiye haritası + şehir detayı) ──────────────────────
+
+    /**
+     * 81 il için tek istekte özet metrikler.
+     * Türkiye haritasını choropleth olarak boyamak için kullanılır.
+     *
+     * GET /zes/availability/city/summary?date=2026-06-03
+     */
+    @GetMapping("/city/summary")
+    public Map<String, Map<String, Object>> citySummary(
+            @RequestParam(name = "date", required = false) String date) throws IOException {
+        return cityAnalysisService.summarizeCities(date);
+    }
+
+    /**
+     * Tek şehir için zengin detay: tier dağılımları, connector_type, top istasyonlar.
+     *
+     * GET /zes/availability/city/detail?date=2026-06-03&city=Ankara
+     */
+    @GetMapping("/city/detail")
+    public Map<String, Object> cityDetail(
+            @RequestParam(name = "date", required = false) String date,
+            @RequestParam(name = "city")                   String city) throws IOException {
+        return cityAnalysisService.cityDetail(date, city);
+    }
+
+    // ── Opportunity (zes_station_opportunity-{date}) ─────────────────────────
+
+    /**
+     * Panel başlığı / sanity-check: dağılımlar, mutabakat, histogram.
+     *
+     * GET /zes/availability/opportunity/summary?date=2026-06-03
+     */
+    @GetMapping("/opportunity/summary")
+    public Map<String, Object> opportunitySummary(
+            @RequestParam(name = "date", required = false) String date) throws IOException {
+        return opportunityService.summary(date);
+    }
+
+    /**
+     * En yüksek opportunity_score'a sahip istasyonlar.
+     * components nested alanı ile birlikte tam doküman döner.
+     *
+     * GET /zes/availability/opportunity/top?date=&size=20&city=&growth=HIGH
+     */
+    @GetMapping("/opportunity/top")
+    public List<Map<String, Object>> opportunityTop(
+            @RequestParam(name = "date",   required = false)      String date,
+            @RequestParam(name = "size",   defaultValue = "20")   Integer size,
+            @RequestParam(name = "city",   required = false)      String city,
+            @RequestParam(name = "growth", required = false)      String growth,
+            @RequestParam(name = "order",  defaultValue = "desc") String order) throws IOException {
+        return opportunityService.top(date, size, city, growth, order);
+    }
+
+    /**
+     * Tek istasyonun tam kırılımı (drill-in için).
+     *
+     * GET /zes/availability/opportunity/station?date=&stationId=...
+     */
+    @GetMapping("/opportunity/station")
+    public Map<String, Object> opportunityStation(
+            @RequestParam(name = "date",      required = false) String date,
+            @RequestParam(name = "stationId")                   String stationId) throws IOException {
+        return opportunityService.station(date, stationId);
+    }
+
+    /**
+     * Score vs existing_demand_supply_ratio scatter (agreement renkli).
+     *
+     * GET /zes/availability/opportunity/scatter?date=&size=2000
+     */
+    @GetMapping("/opportunity/scatter")
+    public List<Map<String, Object>> opportunityScatter(
+            @RequestParam(name = "date", required = false)       String date,
+            @RequestParam(name = "size", defaultValue = "2000")  Integer size) throws IOException {
+        return opportunityService.scatter(date, size);
+    }
+
+    @GetMapping("/opportunity/available-dates")
+    public List<String> opportunityAvailableDates() throws IOException {
+        return opportunityService.availableDates();
+    }
+
+    // ── Forecast (zes_station_forecast-{date}) ───────────────────────────────
+
+    @GetMapping("/forecast/summary")
+    public Map<String, Object> forecastSummary(
+            @RequestParam(name = "date", required = false) String date) throws IOException {
+        return forecastService.summary(date);
+    }
+
+    /**
+     * Sayfalandırılmış tahmin listesi (delta_vs_source bazlı sıralama).
+     * direction=up → en çok yükseliş; direction=down → en çok düşüş.
+     * stationName: kısmi eşleşme.
+     *
+     * Yanıt: { total, from, size, rows: [...] }
+     */
+    @GetMapping("/forecast/top")
+    public Map<String, Object> forecastTop(
+            @RequestParam(name = "date",        required = false)        String date,
+            @RequestParam(name = "from",        defaultValue = "0")      Integer from,
+            @RequestParam(name = "size",        defaultValue = "20")     Integer size,
+            @RequestParam(name = "direction",   defaultValue = "up")     String direction,
+            @RequestParam(name = "city",        required = false)        String city,
+            @RequestParam(name = "stationName", required = false)        String stationName,
+            @RequestParam(name = "sortBy",      defaultValue = "delta")  String sortBy) throws IOException {
+        return forecastService.top(date, from, size, direction, city, stationName, sortBy);
+    }
+
+    @GetMapping("/forecast/scatter")
+    public List<Map<String, Object>> forecastScatter(
+            @RequestParam(name = "date", required = false)       String date,
+            @RequestParam(name = "size", defaultValue = "2000")  Integer size) throws IOException {
+        return forecastService.scatter(date, size);
+    }
+
+    @GetMapping("/forecast/station")
+    public Map<String, Object> forecastStation(
+            @RequestParam(name = "date",      required = false) String date,
+            @RequestParam(name = "stationId")                   String stationId) throws IOException {
+        return forecastService.station(date, stationId);
+    }
+
+    @GetMapping("/forecast/available-dates")
+    public List<String> forecastAvailableDates() throws IOException {
+        return forecastService.availableDates();
+    }
+
+    // ── Dynamic pricing (zes_station_pricing-{date}) ─────────────────────────
+
+    /** GET /zes/availability/pricing/summary?date= — gelir artışı (± bant), PAR düşüşü. */
+    @GetMapping("/pricing/summary")
+    public Map<String, Object> pricingSummary(
+            @RequestParam(name = "date", required = false) String date) throws IOException {
+        return pricingService.summary(date);
+    }
+
+    /** GET /zes/availability/pricing/recommendations?date=&from=&size=&city=&segment=&sort=&order= */
+    @GetMapping("/pricing/recommendations")
+    public Map<String, Object> pricingRecommendations(
+            @RequestParam(name = "date", required = false) String date,
+            @RequestParam(name = "from", required = false) Integer from,
+            @RequestParam(name = "size", required = false) Integer size,
+            @RequestParam(name = "city", required = false) String city,
+            @RequestParam(name = "segment", required = false) String segment,
+            @RequestParam(name = "sort", required = false) String sort,
+            @RequestParam(name = "order", required = false) String order) throws IOException {
+        return pricingService.recommendations(date, from, size, city, segment, sort, order);
+    }
+
+    /** GET /zes/availability/pricing/heatmap?date=&segment= — şehir × saat indirim ısı haritası. */
+    @GetMapping("/pricing/heatmap")
+    public List<Map<String, Object>> pricingHeatmap(
+            @RequestParam(name = "date", required = false) String date,
+            @RequestParam(name = "segment", required = false) String segment) throws IOException {
+        return pricingService.heatmap(date, segment);
+    }
+
+    /** GET /zes/availability/pricing/city?date= — harita rollup (her iki segment). */
+    @GetMapping("/pricing/city")
+    public List<Map<String, Object>> pricingCity(
+            @RequestParam(name = "date", required = false) String date) throws IOException {
+        return pricingService.city(date);
+    }
+
+    /** GET /zes/availability/pricing/station?date=&stationId= — tek istasyon kırılımı. */
+    @GetMapping("/pricing/station")
+    public List<Map<String, Object>> pricingStation(
+            @RequestParam(name = "date", required = false) String date,
+            @RequestParam(name = "stationId") String stationId) throws IOException {
+        return pricingService.station(date, stationId);
+    }
+
+    @GetMapping("/pricing/available-dates")
+    public List<String> pricingAvailableDates() throws IOException {
+        return pricingService.availableDates();
+    }
+
+    @GetMapping("/epdk-connectors/stats/by-snapshot")
+    public Map<String, Map<String, Long>> epdkConnectorBySnapshot(
+            @RequestParam(name = "date", required = false) String date) throws IOException {
+        return epdkSnapshotService.statusBySnapshot(date);
+    }
+
+    @GetMapping("/epdk-connectors/available-dates")
+    public List<String> epdkConnectorAvailableDates() throws IOException {
+        return epdkSnapshotService.availableDates();
     }
 
     @GetMapping("/connector-transform/available-dates")

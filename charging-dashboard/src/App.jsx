@@ -2,6 +2,11 @@ import { useState } from 'react';
 import ZesStatsPage       from './pages/ZesStatsPage';
 import ZesSearchPage      from './pages/ZesSearchPage';
 import ZesPerformancePage from './pages/ZesPerformancePage';
+import ZesCityPage        from './pages/ZesCityPage';
+import ZesOpportunityPage from './pages/ZesOpportunityPage';
+import ZesPredictionPage  from './pages/ZesPredictionPage';
+import ZesBacktestPage    from './pages/ZesBacktestPage';
+import ZesPricingPage     from './pages/ZesPricingPage';
 import AstorStatsPage     from './pages/AstorStatsPage';
 import AstorSearchPage    from './pages/AstorSearchPage';
 
@@ -18,6 +23,11 @@ const ZES_TABS = [
   { id: 'zes-stats',       label: 'Analitikler',          icon: '📈' },
   { id: 'zes-search',      label: 'Soket Ara',            icon: '🔍' },
   { id: 'zes-performance', label: 'İstasyon Performansı', icon: '⚡' },
+  { id: 'zes-city',        label: 'Şehir Analizi',        icon: '🗺️' },
+  { id: 'zes-opportunity', label: 'Büyüme Fırsatı',       icon: '🌱' },
+  { id: 'zes-prediction',  label: 'Tahmin',                icon: '🔮' },
+  { id: 'zes-pricing',     label: 'Dinamik Fiyat',         icon: '💸' },
+  { id: 'zes-backtest',    label: 'Doğrulama',             icon: '🎯' },
 ];
 
 const ASTOR_TABS = [
@@ -97,6 +107,11 @@ export default function App() {
         {brand === 'zes'   && activeTab === 'zes-stats'       && <ZesStatsPage       date={date} onDateChange={setDate} />}
         {brand === 'zes'   && activeTab === 'zes-search'      && <ZesSearchPage      date={date} onDateChange={setDate} />}
         {brand === 'zes'   && activeTab === 'zes-performance' && <ZesPerformancePage date={date} onDateChange={setDate} />}
+        {brand === 'zes'   && activeTab === 'zes-city'        && <ZesCityPage        date={date} onDateChange={setDate} />}
+        {brand === 'zes'   && activeTab === 'zes-opportunity' && <ZesOpportunityPage date={date} onDateChange={setDate} />}
+        {brand === 'zes'   && activeTab === 'zes-prediction'  && <ZesPredictionPage  date={date} onDateChange={setDate} />}
+        {brand === 'zes'   && activeTab === 'zes-pricing'     && <ZesPricingPage     date={date} onDateChange={setDate} />}
+        {brand === 'zes'   && activeTab === 'zes-backtest'    && <ZesBacktestPage    date={date} onDateChange={setDate} />}
         {brand === 'astor' && activeTab === 'astor-stats'     && <AstorStatsPage     date={date} onDateChange={setDate} />}
         {brand === 'astor' && activeTab === 'astor-search'    && <AstorSearchPage    date={date} onDateChange={setDate} />}
       </div>
