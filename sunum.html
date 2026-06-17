@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ZES Şarj Ağı Analiz Platformu — Sunum</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0e0f12;
+    --panel:#15171b;
+    --ink:#e9ebee;
+    --mute:#8a8f98;
+    --line:#23262c;
+    --accent:#6c7cff;
+    --accent-soft:rgba(108,124,255,0.12);
+    --good:#3fb87a;
+    --warn:#e0a64a;
+    --bad:#d96a6a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;font-weight:300;-webkit-font-smoothing:antialiased}
+  body{display:flex;align-items:center;justify-content:center;min-height:100vh;overflow:hidden}
+  .deck{width:min(1180px,96vw);aspect-ratio:16/10;position:relative;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+  .slide{position:absolute;inset:0;padding:56px 64px;display:none;flex-direction:column;overflow:auto}
+  .slide.active{display:flex;animation:fade .35s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.18em;color:var(--mute);text-transform:uppercase;margin-bottom:14px}
+  h1{font-size:46px;font-weight:600;letter-spacing:-.02em;margin:0 0 14px;line-height:1.05}
+  h2{font-size:32px;font-weight:500;letter-spacing:-.015em;margin:0 0 8px;line-height:1.15}
+  h3{font-size:18px;font-weight:500;letter-spacing:-.005em;margin:0 0 8px;color:var(--ink)}
+  p,li{font-size:16px;line-height:1.55;color:var(--ink);font-weight:300}
+  .mute{color:var(--mute)}
+  .accent{color:var(--accent)}
+  .grid{display:grid;gap:18px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:1fr 1fr 1fr}
+  .card{background:#1a1c21;border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+  .card h3{margin-bottom:6px}
+  .card p{font-size:14px;color:var(--mute);margin:0}
+  .kbd{font-family:'IBM Plex Mono',monospace;font-size:12px;background:#1a1c21;border:1px solid var(--line);border-radius:5px;padding:2px 7px;color:var(--mute)}
+  .pill{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.05em;padding:3px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent);border:1px solid rgba(108,124,255,.25)}
+  pre{margin:0;background:#0b0c0f;border:1px solid var(--line);border-radius:8px;padding:16px 18px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.55;color:#cfd3da;overflow:auto;max-height:100%}
+  pre .k{color:#a4b1ff}      /* keyword */
+  pre .s{color:#b4d2a0}      /* string */
+  pre .n{color:#e6c779}      /* number */
+  pre .c{color:#6c7079;font-style:italic}    /* comment */
+  pre .t{color:#7fd0c3}      /* type */
+  pre .f{color:#e8a6c4}      /* function */
+  .codecap{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--mute);margin:0 0 8px;letter-spacing:.05em}
+  .row{display:flex;gap:16px;align-items:flex-start}
+  ul{margin:6px 0 0;padding-left:18px}
+  ul li{margin:5px 0}
+  ul li::marker{color:var(--mute)}
+  .footer{position:absolute;left:64px;right:64px;bottom:18px;display:flex;justify-content:space-between;align-items:center;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--mute);letter-spacing:.1em}
+  .nav{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:20}
+  .nav button{background:#1a1c21;border:1px solid var(--line);color:var(--ink);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:6px 12px;border-radius:6px;cursor:pointer}
+  .nav button:hover{border-color:var(--accent)}
+  .dots{display:flex;gap:4px;align-items:center;padding:0 8px}
+  .dot{width:6px;height:6px;border-radius:50%;background:#3a3f48}
+  .dot.on{background:var(--accent)}
+  .metric{display:flex;flex-direction:column;gap:2px}
+  .metric .v{font-family:'IBM Plex Mono',monospace;font-size:34px;font-weight:500;color:var(--ink);letter-spacing:-.02em}
+  .metric .l{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;color:var(--mute);text-transform:uppercase}
+  .arrow{font-family:'IBM Plex Mono',monospace;color:var(--mute);padding:0 6px}
+  .flow{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;align-items:stretch}
+  .step{background:#1a1c21;border:1px solid var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;justify-content:space-between}
+  .step .n{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:.12em;margin-bottom:8px}
+  .step .t{font-size:14px;font-weight:500;line-height:1.25}
+  .step .d{font-size:12px;color:var(--mute);margin-top:6px;line-height:1.4}
+  .formula{font-family:'IBM Plex Mono',monospace;font-size:14px;background:#0b0c0f;border:1px solid var(--line);border-radius:8px;padding:14px 16px;color:#cfd3da}
+  .formula b{color:var(--accent);font-weight:500}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line)}
+  th{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.1em;color:var(--mute);text-transform:uppercase;font-weight:400}
+  .tag-good{color:var(--good)}
+  .tag-warn{color:var(--warn)}
+  .tag-bad{color:var(--bad)}
+  .stack-l{display:flex;flex-direction:column;gap:14px}
+  .title-slide{justify-content:center}
+  .title-slide h1{font-size:64px;margin-bottom:18px}
+  .title-slide p{font-size:18px;color:var(--mute);max-width:680px}
+  .legend{display:flex;gap:14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--mute)}
+  .legend span::before{content:"●";margin-right:5px}
+</style>
+</head>
+<body>
+
+<div class="deck" id="deck">
+
+<!-- 1: TITLE -->
+<section class="slide title-slide active">
+  <span class="pill">06 · 2026 — İç Sunum</span>
+  <h1>ZES Şarj Ağı<br>Analiz Platformu</h1>
+  <p>Türkiye genelinde ~1.800 elektrikli araç şarj istasyonu için günlük tahmin, yatırım önceliği ve büyüme fırsatı üreten uçtan uca bir analitik sistem.</p>
+  <div class="footer"><span>Eray İşçi</span><span>01 / 13</span></div>
+</section>
+
+<!-- 2: PROBLEM -->
+<section class="slide">
+  <div class="eyebrow">Problem</div>
+  <h2>Hangi istasyonu büyütelim, hangisini izleyelim?</h2>
+  <p class="mute" style="max-width:760px;margin-top:6px">Şarj ağı yatırım kararları bugün büyük ölçüde sezgiye ve eski kullanım raporlarına dayanıyor. Tek tek istasyonların talep / arz dengesi, yarın ne kadar dolacağı ve hangi şehrin geri kaldığı tek bir yerden görülmüyor.</p>
+
+  <div class="grid g3" style="margin-top:32px">
+    <div class="card"><h3>Operasyonel kör nokta</h3><p>Doluluk verisi var ama yorum yok: "yüksek kullanım" tek başına yatırım sinyali değil — yakındaki rakip istasyonların boş kapasitesi de hesaba katılmalı.</p></div>
+    <div class="card"><h3>Tahmin eksikliği</h3><p>Yarınki dolulukla bugünkü dolulukla aynı varsayılıyor. Mevsim, gün, çevre etkisi yok.</p></div>
+    <div class="card"><h3>Doğrulama yok</h3><p>Verilen tavsiyenin tutup tutmadığı geriye dönük ölçülmüyor.</p></div>
+  </div>
+
+  <div style="display:flex;gap:36px;margin-top:38px">
+    <div class="metric"><div class="v">1.796</div><div class="l">İzlenen istasyon</div></div>
+    <div class="metric"><div class="v">81</div><div class="l">İl</div></div>
+    <div class="metric"><div class="v">5 dk</div><div class="l">Veri tazeleme</div></div>
+    <div class="metric"><div class="v">37,2%</div><div class="l">Naïve'e karşı iyileşme<br><span style="color:var(--mute);font-size:9px">13 Haz 2026</span></div></div>
+  </div>
+
+  <div class="footer"><span>ZES Analiz Platformu</span><span>02 / 13</span></div>
+</section>
+
+<!-- 3: ARCHITECTURE -->
+<section class="slide">
+  <div class="eyebrow">Mimari</div>
+  <h2>Üç katmanlı sistem</h2>
+  <p class="mute">Toplama → Hesaplama → Sunum. Her gece otomatik yeniden inşa.</p>
+
+  <div class="grid g3" style="margin-top:24px">
+    <div class="card">
+      <span class="pill">Toplama</span>
+      <h3 style="margin-top:10px">Python · scripts/</h3>
+      <p>EPDK'dan canlı konnektör durumu (5 dk). H2 yerel veritabanında 7 günlük dönen tarih tutulur.</p>
+    </div>
+    <div class="card">
+      <span class="pill">Hesaplama</span>
+      <h3 style="margin-top:10px">Java · Spring Boot</h3>
+      <p>11 servis: performans, tahmin, fırsat, şehir, doğrulama, sağlık. Elasticsearch üzerine günlük indeks zinciri.</p>
+    </div>
+    <div class="card">
+      <span class="pill">Sunum</span>
+      <h3 style="margin-top:10px">React · Vite</h3>
+      <p>7 sayfa: istatistik, performans, şehir, fırsat, tahmin, doğrulama. Tek tasarım sistemi, monokrom + tek vurgu.</p>
+    </div>
+  </div>
+
+  <h3 style="margin-top:32px">Günlük indeks zinciri</h3>
+  <div class="flow" style="margin-top:10px">
+    <div class="step"><div class="n">01</div><div class="t">connector_transform</div><div class="d">Soket bazında saatlik durum</div></div>
+    <div class="step"><div class="n">02</div><div class="t">station_performance</div><div class="d">İstasyon talep/arz skoru</div></div>
+    <div class="step"><div class="n">03</div><div class="t">station_features</div><div class="d">ML özellik vektörü</div></div>
+    <div class="step"><div class="n">04</div><div class="t">station_forecast</div><div class="d">Yarınki doluluk tahmini</div></div>
+    <div class="step"><div class="n">05</div><div class="t">station_opportunity</div><div class="d">Büyüme önceliği</div></div>
+  </div>
+
+  <div class="footer"><span>charging-tracker · charging-dashboard · model_training</span><span>03 / 13</span></div>
+</section>
+
+<!-- 4: PERFORMANCE METRIC -->
+<section class="slide">
+  <div class="eyebrow">Metodoloji · 1/5</div>
+  <h2>İstasyon performansı — talep × arz</h2>
+  <p class="mute" style="max-width:760px">Tek başına "doluluk %" yanıltıcı. Yakındaki rakip istasyonlar boşsa yüksek doluluk fırsat sinyalidir; rakipler de doluysa zaten doymuş bir bölgedir.</p>
+
+  <div class="grid g2" style="margin-top:22px;gap:24px;flex:1;min-height:0">
+    <div class="stack-l">
+      <div class="formula">
+        <b>effective_supply</b> = nearby_stations × (1 − nearby_avg_util / 100)
+      </div>
+      <div class="formula">
+        <b>demand_supply_ratio</b> = utilization × 10 / (5 + effective_supply)
+      </div>
+      <p style="margin-top:6px">Michaelis-Menten: çevre dolu → arz azalır → oran yükselir → genişleme önceliği. Yakın istasyonlar boşsa skor düşer; orada yatırım gereksiz.</p>
+
+      <table>
+        <thead><tr><th>Skor</th><th>Yorum</th><th>Tavsiye</th></tr></thead>
+        <tbody>
+          <tr><td><span class="tag-bad">≥ 70</span></td><td>Yüksek talep, az arz</td><td>Yeni istasyon kur</td></tr>
+          <tr><td><span class="tag-warn">40–70</span></td><td>Orta talep / az arz</td><td>Soket ekle</td></tr>
+          <tr><td><span class="tag-good">&lt; 40</span></td><td>Dengeli</td><td>İzle</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div>
+      <p class="codecap">charging-tracker / ZesStationPerformanceIndexService.java:241</p>
+<pre><span class="c">// Efektif arz: yakın istasyon sayısı × ortalama boş kapasite</span>
+<span class="k">double</span> effectiveSupply = nearbyStations &gt; <span class="n">0</span> &amp;&amp; nearbyAvgUtil &gt;= <span class="n">0</span>
+        ? nearbyStations * (<span class="n">1.0</span> - nearbyAvgUtil / <span class="n">100.0</span>)
+        : nearbyStations;
+
+<span class="c">// Michaelis-Menten: C=5 yarı-doygunluk sabiti</span>
+<span class="c">// effSupply=0 → 2×util, effSupply=5 → util, ∞ → 0</span>
+<span class="k">double</span> demandSupplyRatio = <span class="t">Math</span>.<span class="f">min</span>(<span class="n">100.0</span>,
+        utilizationPct * <span class="n">10.0</span> / (<span class="n">5.0</span> + effectiveSupply));
+
+<span class="t">String</span> demandTier = <span class="f">classifyDemand</span>(utilizationPct);
+<span class="t">String</span> supplyTier = <span class="f">classifySupply</span>(nearbyStations, effectiveSupply);
+<span class="t">String</span> recCode   = <span class="f">recommendationCode</span>(demandTier, supplyTier);
+
+doc.<span class="f">put</span>(<span class="s">"demand_supply_ratio"</span>, <span class="f">round2</span>(demandSupplyRatio));
+doc.<span class="f">put</span>(<span class="s">"recommendation_code"</span>,  recCode);</pre>
+    </div>
+  </div>
+
+  <div class="footer"><span>Talep × Arz skoru</span><span>04 / 13</span></div>
+</section>
+
+<!-- 5: NEIGHBOURHOOD CALC -->
+<section class="slide">
+  <div class="eyebrow">Metodoloji · 2/5</div>
+  <h2>Komşu hesabı — coğrafi katman</h2>
+  <p class="mute" style="max-width:760px">"Yakın" 3 km yarıçap. Haversine ile küresel mesafe, dış API çağrısı yok; o günün veri setiyle istasyon-istasyon hesap yapılır.</p>
+
+  <div class="grid g2" style="margin-top:22px;gap:24px;flex:1;min-height:0">
+    <div>
+      <p class="codecap">ZesStationPerformanceIndexService.java:369</p>
+<pre><span class="k">private double</span> <span class="f">computeNearbyAvgUtil</span>(
+        <span class="t">String</span> stationId,
+        <span class="t">Map</span>&lt;<span class="t">String</span>, <span class="k">double</span>[]&gt; stationSpatial,
+        <span class="k">double</span> radius) {
+
+    <span class="k">double</span>[] self = stationSpatial.<span class="f">get</span>(stationId);
+    <span class="k">if</span> (self == <span class="k">null</span>) <span class="k">return</span> -<span class="n">1.0</span>;
+
+    <span class="k">double</span> sumUtil = <span class="n">0.0</span>;
+    <span class="k">int</span>    count   = <span class="n">0</span>;
+    <span class="k">for</span> (<span class="t">var</span> e : stationSpatial.<span class="f">entrySet</span>()) {
+        <span class="k">if</span> (e.<span class="f">getKey</span>().<span class="f">equals</span>(stationId)) <span class="k">continue</span>;
+        <span class="k">double</span>[] other = e.<span class="f">getValue</span>();
+        <span class="k">if</span> (<span class="f">haversineKm</span>(self[<span class="n">0</span>], self[<span class="n">1</span>],
+                        other[<span class="n">0</span>], other[<span class="n">1</span>]) &lt;= radius) {
+            sumUtil += other[<span class="n">2</span>];
+            count++;
+        }
+    }
+    <span class="k">return</span> count &gt; <span class="n">0</span> ? sumUtil / count : -<span class="n">1.0</span>;
+}</pre>
+    </div>
+
+    <div class="stack-l">
+      <div class="card">
+        <h3>Neden API yok?</h3>
+        <p>Tüm hesap aynı günün verisinden çıkar. Harici servis bağımlılığı sıfır → günlük ETL 26 sn'de biter.</p>
+      </div>
+      <div class="card">
+        <h3>3 km neden?</h3>
+        <p>Şehir içi sürüş süresi ~6 dk; sürücü için "pratik alternatif" eşiği. Şehirlerarası yollar için ayrı parametre.</p>
+      </div>
+      <div class="card">
+        <h3>Tier eşikleri</h3>
+        <p><span class="kbd">FEW ≤ 2</span> &nbsp; <span class="kbd">MODERATE ≤ 5</span> &nbsp; <span class="kbd">MANY &gt; 5</span> · efektif arz cinsinden</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer"><span>Coğrafi komşuluk</span><span>05 / 13</span></div>
+</section>
+
+<!-- 6: FEATURE ENGINEERING -->
+<section class="slide">
+  <div class="eyebrow">Metodoloji · 3/5</div>
+  <h2>Özellikler — model ne görüyor?</h2>
+  <p class="mute" style="max-width:820px">Model her satır için 4 grup özellik alır: <b>bugünkü snapshot</b>, <b>istasyon karakteri</b>, <b>geçmiş günler</b> ve <b>takvim</b>. Hepsi otomatik birleştirilir.</p>
+
+  <div style="margin-top:14px">
+    <p class="codecap">model_training / forecast / data_builder.py:34</p>
+<pre style="max-height:none"><span class="c"># ① İstasyon karakteri — features-{latest} indeksinden, yavaş değişen profil</span>
+FEATURES_NUMERIC = [
+    <span class="s">"charging_ratio"</span>,           <span class="c"># geçmişteki doluluk düzeyi</span>
+    <span class="s">"peakiness"</span>,                <span class="c"># gün içi tepe keskinliği</span>
+    <span class="s">"peak_hour"</span>,                <span class="c"># tipik tepe saati</span>
+    <span class="s">"day_night_ratio"</span>,          <span class="c"># gündüz/gece kullanım oranı</span>
+    <span class="s">"weekend_weekday_ratio"</span>,     <span class="c"># hafta sonu/içi oranı</span>
+    <span class="s">"observation_quality"</span>,       <span class="c"># veri kalitesi skoru</span>
+]
+
+<span class="c"># ② Bugünkü snapshot — performance-{t} indeksinden, anlık durum</span>
+PERF_NUMERIC = [
+    <span class="s">"charging_utilization_pct"</span>,   <span class="c"># otoregresif: bugünkü doluluk</span>
+    <span class="s">"nearby_avg_utilization"</span>,     <span class="c"># 1 km'deki rakip ort. doluluğu</span>
+    <span class="s">"nearby_stations_count"</span>,      <span class="c"># yakındaki istasyon sayısı</span>
+    <span class="s">"nearby_connectors_count"</span>,    <span class="c"># yakındaki toplam soket</span>
+    <span class="s">"connector_count"</span>,            <span class="c"># istasyonun kendi soket sayısı</span>
+    <span class="s">"effective_supply"</span>,           <span class="c"># boş kapasiteyle ağırlıklı arz</span>
+    <span class="s">"lat"</span>, <span class="s">"lng"</span>,                <span class="c"># konum</span>
+]</pre>
+  </div>
+
+  <div class="grid g2" style="margin-top:14px;gap:18px">
+    <div>
+      <p class="codecap">③ Geçmiş günler — data_builder.py:118</p>
+<pre style="font-size:11.5px"><span class="c"># util_lag_1d ve util_lag_7d → dünün ve geçen haftanın aynı günü</span>
+<span class="k">def</span> <span class="f">_join_lag</span>(base, client, t, label):
+    col = <span class="f">f"util_lag_{label}"</span>
+    idx = <span class="f">_perf_index</span>(t)
+    <span class="k">if</span> <span class="f">_index_exists</span>(client, idx):
+        lag = <span class="f">_scan_to_df</span>(client, idx,
+                           [<span class="s">"station_id"</span>, TARGET_COL])
+        base = base.<span class="f">merge</span>(lag.<span class="f">rename</span>(...), on=<span class="s">"station_id"</span>)
+        base[col] = base[col].<span class="f">fillna</span>(base[TARGET_COL])
+        <span class="k">return</span> base
+    base[col] = base[TARGET_COL]   <span class="c"># fallback: bugünkü</span>
+    <span class="k">return</span> base
+
+perf_t = <span class="f">_join_lag</span>(perf_t, client, t - <span class="f">timedelta</span>(days=<span class="n">1</span>), <span class="s">"1d"</span>)
+perf_t = <span class="f">_join_lag</span>(perf_t, client, t - <span class="f">timedelta</span>(days=<span class="n">7</span>), <span class="s">"7d"</span>)</pre>
+    </div>
+
+    <div>
+      <p class="codecap">④ Takvim — data_builder.py:108</p>
+<pre style="font-size:11.5px"><span class="c"># Tahmin edilecek günden (t+1) çıkarılır</span>
+<span class="k">def</span> <span class="f">_calendar_features</span>(d: <span class="t">date</span>) -&gt; <span class="t">dict</span>:
+    dow = d.<span class="f">weekday</span>()       <span class="c"># 0=Pzt … 6=Paz</span>
+    <span class="k">return</span> {
+        <span class="s">"dow_target"</span>:        dow,
+        <span class="s">"is_weekend_target"</span>: <span class="t">int</span>(dow &gt;= <span class="n">5</span>),
+        <span class="s">"is_monday_target"</span>:  <span class="t">int</span>(dow == <span class="n">0</span>),
+        <span class="s">"is_friday_target"</span>:  <span class="t">int</span>(dow == <span class="n">4</span>),
+    }
+
+cal = <span class="f">_calendar_features</span>(t1)
+<span class="k">for</span> k, v <span class="k">in</span> cal.<span class="f">items</span>():
+    perf_t[k] = v</pre>
+    </div>
+  </div>
+
+  <div class="footer"><span>Özellik mühendisliği · 4 grup, ~20 sütun</span><span>06 / 13</span></div>
+</section>
+
+<!-- 7: FORECAST MODEL -->
+<section class="slide">
+  <div class="eyebrow">Metodoloji · 4/5</div>
+  <h2>Tahmin modeli — HistGradientBoosting</h2>
+  <p class="mute" style="max-width:780px">Tek bir karar ağacı <b>değil</b>. <b>Onlarca küçük ağaç</b> art arda eğitilir; her ağaç bir öncekinin hatasını düzeltir (boosting). sklearn'ün histogram tabanlı hızlı versiyonunu kullanıyoruz — milyonlarca satıra kadar saniyeler içinde eğitilir.</p>
+
+  <div class="grid g2" style="margin-top:20px;gap:24px;flex:1;min-height:0">
+    <div>
+      <p class="codecap">model_training / forecast / train.py:95</p>
+<pre><span class="c"># Monoton kısıt: tahmin, otoregresif sinyallere göre</span>
+<span class="c"># azalamaz. (Bugün yüksekse yarın da yüksek tahmin et.)</span>
+monotonic_features = {
+    <span class="s">"charging_utilization_pct"</span>,
+    <span class="s">"util_lag_1d"</span>,
+    <span class="s">"util_lag_7d"</span>,
+    <span class="s">"nearby_avg_utilization"</span>,
+}
+monotonic_cst = [
+    <span class="n">1</span> <span class="k">if</span> c <span class="k">in</span> monotonic_features <span class="k">else</span> <span class="n">0</span>
+    <span class="k">for</span> c <span class="k">in</span> ts.feature_cols
+]
+
+model = <span class="f">HistGradientBoostingRegressor</span>(
+    learning_rate=<span class="n">0.05</span>,
+    max_iter=<span class="n">500</span>,
+    max_leaf_nodes=<span class="n">31</span>,
+    min_samples_leaf=<span class="n">30</span>,
+    l2_regularization=<span class="n">1.0</span>,
+    monotonic_cst=monotonic_cst,
+    early_stopping=<span class="k">True</span>,
+)
+model.<span class="f">fit</span>(X_train.values, y_train.values)</pre>
+    </div>
+
+    <div class="stack-l">
+      <div class="card">
+        <h3>Neden monotonik?</h3>
+        <p>Model serbest bırakıldığında "bugün %90 ama yarın %30" gibi davranışsal olarak garip çıktılar üretebilir. Doluluk sinyallerine pozitif monotonluk vererek tahmin yönü garantilenir.</p>
+      </div>
+      <div class="card">
+        <h3>Naïve baseline</h3>
+        <p>"Yarın = bugün" varsayımı. Model bu baseline'a karşı ölçülür; pazarlama için değil, mühendislik için.</p>
+      </div>
+      <div class="row" style="gap:14px">
+        <div class="metric"><div class="v">3,44</div><div class="l">Model MAE (pp)</div></div>
+        <div class="metric"><div class="v">5,48</div><div class="l">Naïve MAE (pp)</div></div>
+        <div class="metric"><div class="v" style="color:var(--good)">+37%</div><div class="l">İyileşme</div></div>
+      </div>
+      <p class="mute" style="font-size:11px;margin-top:-2px">Örnek: 13 Haziran 2026 doğrulaması · 1.796 istasyon</p>
+    </div>
+  </div>
+
+  <div class="footer"><span>Tahmin modeli</span><span>07 / 13</span></div>
+</section>
+
+<!-- 7: BACKTEST -->
+<section class="slide">
+  <div class="eyebrow">Metodoloji · 5/5</div>
+  <h2>Doğrulama — her tahmin geriye dönük ölçülür</h2>
+  <p class="mute" style="max-width:780px">Tahmin servisi her gün dünün tahmini ile bugünün gerçeğini karşılaştırır. Aşağıdaki örnek skorlar <b>13 Haziran 2026</b> doğrulamasından (önceki gün tahmini × bugünkü gerçek; 1.796 istasyon). Tarih değiştikçe değerler de değişir.</p>
+
+  <div class="grid g3" style="margin-top:24px">
+    <div class="card">
+      <span class="pill">MAE</span>
+      <h3 style="margin-top:10px">3,44 pp</h3>
+      <p>Ortalama mutlak hata. Yarınki doluluğu ortalama ~3,4 puan sapmayla tahmin ediyoruz (örn. gerçek %45, tahmin %42–%48). Naïve baseline: 5,48 pp.</p>
+    </div>
+    <div class="card">
+      <span class="pill">R²</span>
+      <h3 style="margin-top:10px">0,665</h3>
+      <p>Modelimiz, istasyonlar arası doluluk farkının <b>%66,5'ini</b> açıklıyor. (1,0 = mükemmel; 0 = ortalama kadar; &lt;0 = ortalamadan kötü.) Naïve "yarın=bugün" R²'si <span class="tag-bad">-0,169</span> → ortalamadan da kötü.</p>
+    </div>
+    <div class="card">
+      <span class="pill">Bias</span>
+      <h3 style="margin-top:10px">+0,10 pp</h3>
+      <p>Sistematik sapma sıfıra çok yakın. Sürekli yüksek ya da düşük tahmin etmiyoruz.</p>
+    </div>
+  </div>
+
+  <div class="formula" style="margin-top:24px">
+    <b>R²</b> = 1 − Σ(y − ŷ<sub>model</sub>)² / Σ(y − ȳ)²
+    &nbsp;&nbsp;<span class="mute">— modelin hatası vs. ortalama tahminin hatası</span>
+  </div>
+
+  <h3 style="margin-top:24px">Doğrulama paneli</h3>
+  <ul style="columns:2;column-gap:40px">
+    <li>Takvim: hangi günlerin doğrulama verisi sağlam / şüpheli / bozuk</li>
+    <li>Scatter: tahmin vs gerçek, hata bandına göre renk</li>
+    <li>Hata dağılımı: histogram, sistematik sapma kontrolü</li>
+    <li>İl bazlı MAE: model nerede iyi, nerede zayıf</li>
+    <li>En isabetli 20 / en hatalı 20: vaka analizi için</li>
+  </ul>
+
+  <div class="footer"><span>Backtest sayfası — canlı</span><span>08 / 13</span></div>
+</section>
+
+<!-- 8: UI PAGES -->
+<section class="slide">
+  <div class="eyebrow">Ürün</div>
+  <h2>Yöneticinin tek panelden gördüğü şey</h2>
+
+  <div class="grid g2" style="margin-top:18px;gap:14px">
+    <div class="card"><span class="pill">Analitikler</span><h3 style="margin-top:8px">Genel görünüm</h3><p>Tüm ağın saat bazlı doluluk profili, ağ büyüklüğü, soket tipleri.</p></div>
+    <div class="card"><span class="pill">İstasyon Performansı</span><h3 style="margin-top:8px">Talep × arz matrisi</h3><p>9'lu tavsiye matrisi, en kullanılan / az kullanılan, öncelik skoru. Eksik tarih varsa "backfill" butonu.</p></div>
+    <div class="card"><span class="pill">Şehir Analizi</span><h3 style="margin-top:8px">81 il</h3><p>Talep, arz, doyum, tavsiye dağılımı il seviyesinde. Harita drill-down.</p></div>
+    <div class="card"><span class="pill">Büyüme Fırsatı</span><h3 style="margin-top:8px">Yatırım önceliği</h3><p>Tavsiye kodu × büyüme potansiyeli sıralaması. Tavsiye + tahmin uyumu kontrol edilir.</p></div>
+    <div class="card"><span class="pill">Tahmin</span><h3 style="margin-top:8px">Yarın ne olacak</h3><p>En çok artacak / azalacak istasyonlar. Model özet metrikleri.</p></div>
+    <div class="card"><span class="pill">Doğrulama</span><h3 style="margin-top:8px">Model performansı</h3><p>Tarih seç → MAE, R², bias, hata dağılımı, isabetli/hatalı listeler.</p></div>
+  </div>
+
+  <div class="footer"><span>charging-dashboard/src/pages</span><span>09 / 13</span></div>
+</section>
+
+<!-- 9: WHAT'S DONE - SUMMARY -->
+<section class="slide">
+  <div class="eyebrow">Şu ana kadar</div>
+  <h2>Bitenler</h2>
+
+  <div class="grid g2" style="margin-top:18px;gap:18px;flex:1">
+    <div class="stack-l">
+      <div class="card">
+        <h3>Veri katmanı</h3>
+        <ul><li>EPDK'dan 5 dk'da bir canlı çekim</li><li>7 günlük döngüsel H2 history</li><li>Günlük ETL pipeline (~26 sn)</li></ul>
+      </div>
+      <div class="card">
+        <h3>Analitik servisleri</h3>
+        <ul><li>İstasyon performans skorlaması</li><li>Şehir bazlı toplulaştırma</li><li>Büyüme fırsatı sıralaması</li><li>İndeks sağlık kontrolü</li></ul>
+      </div>
+    </div>
+    <div class="stack-l">
+      <div class="card">
+        <h3>Tahmin sistemi</h3>
+        <ul><li>HistGradientBoosting + monotonik kısıtlar</li><li>Otomatik backtest her gün</li><li>+28% iyileşme vs naïve</li></ul>
+      </div>
+      <div class="card">
+        <h3>Arayüz</h3>
+        <ul><li>7 sayfa, monokrom tasarım sistemi</li><li>Tarih seçici, drill-down, filtreler</li><li>1.796 istasyon canlı izleniyor</li></ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer"><span>Mevcut sürüm — üretimde</span><span>10 / 13</span></div>
+</section>
+
+<!-- 10: DYNAMIC PRICING - VISION -->
+<section class="slide">
+  <div class="eyebrow">Gelecek · Vizyon</div>
+  <h2>Dinamik fiyatlandırma</h2>
+  <p class="mute" style="max-width:780px">Bugün fiyat sabit. Yarınki doluluğu zaten tahmin ediyoruz. Aynı motora fiyat elastikiyeti ekleyince, sistem tek tek istasyonlar için saat-bazlı öneri fiyat üretebilir: <b class="accent">talep dolu saatlerde dengele, boş saatlerde teşvik et.</b></p>
+
+  <div class="grid g3" style="margin-top:28px">
+    <div class="card">
+      <h3>Hedef 1 — Gelir</h3>
+      <p>Boş kapasiteyi indirimle doldurmak, talep tavanını dengeli fiyat artışıyla yönetmek.</p>
+    </div>
+    <div class="card">
+      <h3>Hedef 2 — Deneyim</h3>
+      <p>Zirve saatlerde kuyruk azaltma. Sürücü dolu istasyona gelmeden önce alternatif öneri görmüş olur.</p>
+    </div>
+    <div class="card">
+      <h3>Hedef 3 — Yatırım</h3>
+      <p>Fiyat oynatamayacak kadar baskı altındaki istasyonlar "yeni istasyon" listesinin en başına otomatik düşer.</p>
+    </div>
+  </div>
+
+  <h3 style="margin-top:30px">Temel formül</h3>
+  <div class="formula" style="margin-top:6px">
+    <b>recommended_price</b> = base_price × (1 + α × (forecast_util − target_util))
+  </div>
+  <p class="mute" style="margin-top:8px;font-size:13.5px">α = istasyon-spesifik elastikiyet katsayısı (geçmiş fiyat-talep çiftlerinden öğrenilir).<br>target_util = bölge için optimal doluluk hedefi (örn. %65 — kuyruk yok, ama atıl da değil).</p>
+
+  <div class="footer"><span>Sonraki faz</span><span>11 / 13</span></div>
+</section>
+
+<!-- 11: DYNAMIC PRICING - ARCHITECTURE -->
+<section class="slide">
+  <div class="eyebrow">Gelecek · Mimari</div>
+  <h2>Mevcut altyapıyla nasıl entegre olur</h2>
+
+  <div class="flow" style="margin-top:18px;grid-template-columns:repeat(4,1fr)">
+    <div class="step"><div class="n">FAZ 1 · 2 hf</div><div class="t">Fiyat verisi toplama</div><div class="d">Mevcut <span class="kbd">connector_transform</span> indeksine <span class="kbd">price_per_kwh</span> alanı. Pasif gözlem.</div></div>
+    <div class="step"><div class="n">FAZ 2 · 2 hf</div><div class="t">Elastikiyet modeli</div><div class="d">Geçmiş fiyat × talep çiftleri → istasyon başı α katsayısı. Yeni indeks: <span class="kbd">zes_pricing_curves</span>.</div></div>
+    <div class="step"><div class="n">FAZ 3 · 1 hf</div><div class="t">Öneri servisi</div><div class="d">Java: <span class="kbd">ZesDynamicPricingService</span>. Tahmin + elastikiyeti birleştirip saatlik fiyat üretir.</div></div>
+    <div class="step"><div class="n">FAZ 4 · 1 hf</div><div class="t">Simülasyon UI</div><div class="d">Yeni sayfa: <span class="kbd">Dinamik Fiyat</span>. Slider ile "ya fiyatı %X arttırırsam" senaryosu.</div></div>
+  </div>
+
+  <div class="grid g2" style="margin-top:26px;gap:24px;flex:1;min-height:0">
+    <div>
+      <p class="codecap">Önerilen — ZesDynamicPricingService.java (taslak)</p>
+<pre><span class="k">public</span> <span class="t">PriceRecommendation</span> <span class="f">recommend</span>(<span class="t">String</span> stationId) {
+    <span class="t">StationForecast</span>  fc  = forecastService.<span class="f">latest</span>(stationId);
+    <span class="t">ElasticityCurve</span>  el  = curveService.<span class="f">forStation</span>(stationId);
+    <span class="t">double</span>           base = priceService.<span class="f">basePrice</span>(stationId);
+    <span class="t">double</span>           target = TARGET_UTIL;  <span class="c">// 0.65</span>
+
+    <span class="c">// Talep yüksekse fiyatı artır, düşükse indir</span>
+    <span class="k">double</span> gap   = fc.<span class="f">predictedUtil</span>() - target;
+    <span class="k">double</span> ratio = <span class="n">1.0</span> + el.<span class="f">alpha</span>() * gap;
+
+    <span class="c">// Güven aralığı: tahmin residual dağılımından</span>
+    <span class="k">double</span>[] ci = fc.<span class="f">residualBand</span>();
+
+    <span class="k">return new</span> <span class="t">PriceRecommendation</span>(
+        base * ratio,
+        base * (<span class="n">1</span> + el.<span class="f">alpha</span>() * (gap + ci[<span class="n">0</span>])),
+        base * (<span class="n">1</span> + el.<span class="f">alpha</span>() * (gap + ci[<span class="n">1</span>])),
+        fc.<span class="f">confidence</span>()
+    );
+}</pre>
+    </div>
+
+    <div class="stack-l">
+      <div class="card">
+        <h3>Riskleri yönetmek</h3>
+        <ul><li>Önce öneri modu — operasyon onayıyla uygulanır</li><li>%X tavan/taban (kullanıcı şokunu engeller)</li><li>%20 istasyonda A/B test, kontrol grubu sabit fiyat</li></ul>
+      </div>
+      <div class="card">
+        <h3>Başarı metrikleri</h3>
+        <ul><li>İstasyon-gün başına gelir (kontrol grubuna karşı)</li><li>Zirve saat doluluk varyansı (kuyruk göstergesi)</li><li>Atıl kapasite saatlerinde aktivasyon</li></ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer"><span>Dinamik fiyat — uygulama planı</span><span>12 / 13</span></div>
+</section>
+
+<!-- 12: CLOSING -->
+<section class="slide title-slide">
+  <span class="pill">Özet</span>
+  <h1 style="font-size:48px">Veri var, model var,<br>sıra fiyatta.</h1>
+  <p style="max-width:720px;margin-top:14px">Bugün ağın nerede dolu, nerede boş, yarın ne olacağını biliyoruz. Aynı bilgiyi fiyatla buluşturduğumuzda sistem tek başına gelir ve deneyimi optimize edebilir.</p>
+
+  <div style="display:flex;gap:36px;margin-top:36px">
+    <div class="metric"><div class="v">~6 hf</div><div class="l">Tahmini süre</div></div>
+    <div class="metric"><div class="v">0</div><div class="l">Yeni altyapı maliyeti</div></div>
+    <div class="metric"><div class="v">A/B</div><div class="l">İlk pilot</div></div>
+  </div>
+
+  <p class="mute" style="margin-top:36px;font-size:13px">eray_isci@hotmail.com · 06 / 2026</p>
+  <div class="footer"><span>Teşekkürler</span><span>13 / 13</span></div>
+</section>
+
+</div>
+
+<div class="nav">
+  <button id="prev">← Önceki</button>
+  <div class="dots" id="dots"></div>
+  <button id="next">Sonraki →</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const dotsBox = document.getElementById('dots');
+  let i = 0;
+  slides.forEach((_, idx) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (idx===0?' on':'');
+    d.onclick = () => go(idx);
+    dotsBox.appendChild(d);
+  });
+  function go(n){
+    i = (n + slides.length) % slides.length;
+    slides.forEach((s, idx) => s.classList.toggle('active', idx===i));
+    dotsBox.querySelectorAll('.dot').forEach((d,idx)=>d.classList.toggle('on', idx===i));
+  }
+  document.getElementById('prev').onclick = () => go(i-1);
+  document.getElementById('next').onclick = () => go(i+1);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') go(i+1);
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') go(i-1);
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(slides.length-1);
+    else if (e.key === 'f' || e.key === 'F') document.documentElement.requestFullscreen?.();
+  });
+</script>
+</body>
+</html>
