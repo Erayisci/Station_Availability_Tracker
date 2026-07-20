@@ -142,62 +142,19 @@ def pricing_predict_hourly(date_str: Optional[str] = Query(None, alias="date")):
     return predict_hourly(_date.fromisoformat(date_str) if date_str else _date.today())
 
 
-@app.post("/pricing/predict-city")
-def pricing_predict_city(date_str: Optional[str] = Query(None, alias="date")):
-    """Aggregate the hourly forecast into zes_city_forecast-{date}."""
-    from pricing.city_predict import predict_city
-    from datetime import date as _date
-    return predict_city(_date.fromisoformat(date_str) if date_str else _date.today())
-
-
-@app.post("/pricing/optimize")
-def pricing_optimize(
-    date_str: Optional[str] = Query(None, alias="date"),
-    gamma: float = Query(None, description="Revenue↔evenness trade-off weight (default config GAMMA)"),
-):
-    """Optimize discounts → zes_station_pricing-{date}."""
-    from pricing.optimize import optimize
-    from pricing import pricing_config as pcfg
-    from datetime import date as _date
-    g = gamma if gamma is not None else pcfg.GAMMA
-    return optimize(_date.fromisoformat(date_str) if date_str else _date.today(), gamma=g)
-
-
 @app.post("/pricing/run-all")
-def pricing_run_all(
-    date_str: Optional[str] = Query(None, alias="date"),
-    gamma: float = Query(None),
-):
-    """Convenience pipeline: build-hourly → predict-hourly → predict-city → optimize."""
+def pricing_run_all(date_str: Optional[str] = Query(None, alias="date")):
+    """Station-pricing data pipeline: build-hourly (observed) → predict-hourly (forecast).
+
+    The pricing DECISION is no longer optimized server-side — the dashboard lets
+    the user set per-band discounts and simulates revenue in the browser. This
+    endpoint only refreshes the two per-station indices the page reads.
+    """
     from datetime import date as _date
+    from pricing.hourly_data_builder import build_hourly_performance
     from pricing.hourly_predict import predict_hourly
-    from pricing.city_predict import predict_city
-    from pricing.optimize import optimize
-    from pricing import pricing_config as pcfg
     d = _date.fromisoformat(date_str) if date_str else _date.today()
-    g = gamma if gamma is not None else pcfg.GAMMA
-    steps = {
+    return {
+        "build_hourly": build_hourly_performance(d),
         "predict_hourly": predict_hourly(d),
-        "predict_city": predict_city(d),
-        "optimize": optimize(d, gamma=g),
     }
-    return steps
-
-
-@app.post("/pricing/backtest")
-def pricing_backtest(
-    gamma: float = Query(None),
-    start_date: Optional[str] = Query(None),
-    end_date: Optional[str] = Query(None),
-):
-    """Simulation backtest of the pricing policy vs the non-discounted baseline."""
-    from pricing.backtest import backtest, write_report
-    from pricing import pricing_config as pcfg
-    from datetime import date as _date
-    g = gamma if gamma is not None else pcfg.GAMMA
-    s = _date.fromisoformat(start_date) if start_date else None
-    e = _date.fromisoformat(end_date) if end_date else None
-    res = backtest(start_date=s, end_date=e, gamma=g)
-    if res.get("status") == "ok":
-        res["report"] = write_report(res)
-    return res

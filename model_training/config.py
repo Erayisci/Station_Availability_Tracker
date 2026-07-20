@@ -1,7 +1,8 @@
 """Single source of truth for the ML pipeline."""
+import os
 from pathlib import Path
 
-ES_HOST = "http://localhost:9200"
+ES_HOST = os.environ.get("ES_HOST", "http://localhost:9200")
 
 SOURCE_INDEX_PATTERN = "zes_connector_transform-*"
 OUTPUT_INDEX_PREFIX = "zes_station_features"

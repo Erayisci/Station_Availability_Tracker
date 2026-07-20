@@ -1,5 +1,7 @@
 package com.charging.zes.elastic;
 
+import com.charging.elastic.EsConfig;
+
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import co.elastic.clients.json.jackson.JacksonJsonpMapper;
@@ -33,7 +35,7 @@ public class ZesForecastBacktestService {
     private final RestClient          restClient;
 
     public ZesForecastBacktestService() {
-        restClient = RestClient.builder(new HttpHost("localhost", 9200)).build();
+        restClient = RestClient.builder(EsConfig.host()).build();
         RestClientTransport transport = new RestClientTransport(restClient, new JacksonJsonpMapper());
         client = new ElasticsearchClient(transport);
     }

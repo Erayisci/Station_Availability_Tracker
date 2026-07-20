@@ -170,7 +170,7 @@ function ComponentBar({ components }) {
 function HotList({ rows }) {
   const [expanded, setExpanded] = useState(null);
   if (!rows) return <div className="loading">Yükleniyor…</div>;
-  if (!rows.length) return <EmptyState title="Veri yok" description="Bu tarih için opportunity index'i boş" />;
+  if (!rows.length) return <EmptyState title="Veri yok" description="Bu tarih için istasyon profili index'i boş" />;
 
   return (
     <div className="table-wrapper" style={{ maxHeight: 540, overflowY: 'auto' }}>
@@ -265,7 +265,7 @@ function DrillIn({ row }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Top stats row */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <MetricCard label="Opportunity Skoru" value={Number(row.opportunity_score).toFixed(1)}
+        <MetricCard label="Profil Skoru" value={Number(row.opportunity_score).toFixed(1)}
           color={growthColor(row.growth_potential)} sub={GROWTH_LABEL[row.growth_potential]} />
         <MetricCard label="Demand/Supply (kural)"
           value={row.existing_demand_supply_ratio != null ? Number(row.existing_demand_supply_ratio).toFixed(1) : '—'} />
@@ -452,11 +452,11 @@ function AgreementScatter({ points }) {
               offset: -10, fill: 'var(--tx-disabled)', fontSize: 11 }}
           />
           <YAxis
-            type="number" dataKey="y" name="Opportunity"
+            type="number" dataKey="y" name="Profil Skoru"
             domain={[0, 100]}
             tick={{ fill: 'var(--tx-tertiary)', fontSize: 11, fontFamily: 'var(--font-mono)' }}
             axisLine={{ stroke: 'var(--bd-subtle)' }} tickLine={false}
-            label={{ value: 'Opportunity Skoru ↑', angle: -90, position: 'insideLeft',
+            label={{ value: 'Profil Skoru ↑', angle: -90, position: 'insideLeft',
               offset: 12, fill: 'var(--tx-disabled)', fontSize: 11 }}
           />
           <ZAxis range={[20, 20]} />
@@ -562,13 +562,13 @@ export default function ZesOpportunityPage({ date, onDateChange }) {
 
   const charts = [
     {
-      title: 'Büyüme Fırsatı — Top 50',
-      subtitle: 'opportunity_score desc · bileşen kırılımı satır içinde',
+      title: 'İstasyon Profili — Top 50',
+      subtitle: 'profil skoru desc · bileşen kırılımı satır içinde',
       node: <HotList rows={topRows} />,
     },
     {
       title: 'Gözden Çıkarılabilir — Bottom 20',
-      subtitle: 'opportunity_score asc · en düşük potansiyelli istasyonlar',
+      subtitle: 'profil skoru asc · en düşük potansiyelli istasyonlar',
       node: <HotList rows={bottomRows} />,
     },
     {
@@ -578,7 +578,7 @@ export default function ZesOpportunityPage({ date, onDateChange }) {
     },
     {
       title: 'Mutabakat Scatter',
-      subtitle: 'opportunity_score vs kural tabanlı demand_supply_ratio',
+      subtitle: 'profil skoru vs kural tabanlı demand_supply_ratio',
       node: <AgreementScatter points={scatter} />,
     },
   ];
@@ -646,12 +646,12 @@ export default function ZesOpportunityPage({ date, onDateChange }) {
         selectedDate={date}
         onSelect={handleDateSelect}
         fetchDates={fetchOpportunityAvailableDates}
-        label="Opportunity Tarihi Seç"
+        label="Profil Tarihi Seç"
       />
 
       {!dateConfirmed ? (
         <EmptyState icon="🌱" title="Tarih seçin"
-          description="Yukarıdaki takvimden zes_station_opportunity index'i bulunan bir tarih seçin." />
+          description="Yukarıdaki takvimden istasyon profili index'i bulunan bir tarih seçin." />
       ) : (
         <>
           {error && <div className="error">{error}</div>}

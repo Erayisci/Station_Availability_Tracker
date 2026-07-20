@@ -1,5 +1,7 @@
 package com.charging.zes.elastic;
 
+import com.charging.elastic.EsConfig;
+
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
@@ -37,7 +39,7 @@ public class ZesForecastService {
     private final RestClient          restClient;
 
     public ZesForecastService() {
-        restClient = RestClient.builder(new HttpHost("localhost", 9200)).build();
+        restClient = RestClient.builder(EsConfig.host()).build();
         RestClientTransport transport = new RestClientTransport(restClient, new JacksonJsonpMapper());
         client = new ElasticsearchClient(transport);
     }
@@ -176,8 +178,16 @@ public class ZesForecastService {
         }
         enrichWithActuals(allRows, date);
 
+        // Drop rows with no charging activity (actual == 0 or missing) so they don't
+        // dominate the ascending view.
+        allRows.removeIf(r -> {
+            Double a = numOrNull(r.get("actual_utilization_pct"));
+            return a == null || a <= 0.0;
+        });
+
         String key = sb.equals("actual") ? "actual_utilization_pct" : "error_vs_actual";
         boolean asc = order == SortOrder.Asc;
+        boolean absSort = sb.equals("error");
         allRows.sort((a, b) -> {
             Double av = numOrNull(a.get(key));
             Double bv = numOrNull(b.get(key));
@@ -185,7 +195,10 @@ public class ZesForecastService {
             if (av == null && bv == null) return 0;
             if (av == null) return 1;
             if (bv == null) return -1;
-            int cmp = Double.compare(av, bv);
+            // For error, sort by magnitude (|error|) so ascending shows ~0 first.
+            double aKey = absSort ? Math.abs(av) : av;
+            double bKey = absSort ? Math.abs(bv) : bv;
+            int cmp = Double.compare(aKey, bKey);
             return asc ? cmp : -cmp;
         });
 
@@ -194,7 +207,7 @@ public class ZesForecastService {
                 ? List.of()
                 : new ArrayList<>(allRows.subList(fr, toIdx));
 
-        long total = pool.hits().total() != null ? pool.hits().total().value() : allRows.size();
+        long total = allRows.size();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("total", total);
         result.put("from",  fr);

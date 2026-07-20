@@ -12,6 +12,43 @@ import {
 } from '../components/ui';
 import DateCalendar from '../components/DateCalendar';
 
+// Stations with no charging activity (actual == 0) make the error visualisations
+// misleading: their error == predicted, so they collapse onto the 0-bucket and
+// dominate the histogram even though they're effectively "no-op" predictions.
+const hasActualLoad = (r) => Number(r?.actual ?? 0) > 0;
+
+// Recompute model + baseline metrics over an arbitrary row subset, so we can
+// show "yüklü istasyon" KPIs next to the all-station numbers from the backend.
+function computeMetrics(rows) {
+  const n = rows.length;
+  if (!n) return null;
+  let sumAbsM = 0, sumAbsN = 0, sumBiasM = 0, sumAct = 0;
+  let ssResM = 0, ssResN = 0;
+  for (const r of rows) {
+    const a = Number(r.actual);
+    const p = Number(r.predicted);
+    const s = Number(r.source);
+    sumAct += a;
+    sumAbsM += Math.abs(p - a);
+    sumAbsN += Math.abs(s - a);
+    sumBiasM += (p - a);
+    ssResM += (a - p) * (a - p);
+    ssResN += (a - s) * (a - s);
+  }
+  const meanAct = sumAct / n;
+  let ssTot = 0;
+  for (const r of rows) {
+    const a = Number(r.actual);
+    ssTot += (a - meanAct) * (a - meanAct);
+  }
+  const r2 = (v) => ssTot > 0 ? 1 - v / ssTot : 0;
+  return {
+    n,
+    model: { mae: sumAbsM / n, bias: sumBiasM / n, r2: r2(ssResM) },
+    naive: { mae: sumAbsN / n, r2: r2(ssResN) },
+  };
+}
+
 const BEST_MIN_ACTUAL = 1.0;  // "best" sıralaması için minimum actual eşiği
 const N_TABLE_ROWS    = 20;
 
@@ -73,60 +110,100 @@ export default function ZesBacktestPage({ date, onDateChange }) {
 
       {date && loading && <div className="loading">Yükleniyor…</div>}
 
-      {date && !loading && summary && stations && (
+      {date && !loading && summary && stations && (() => {
+        const activeStations = stations.filter(hasActualLoad);
+        const activeMetrics  = computeMetrics(activeStations);
+        return (
         <>
-          <KpiRow summary={summary} />
+          <KpiRow summary={summary} activeMetrics={activeMetrics} />
+          <div style={{
+            fontSize: 11, color: 'var(--tx-tertiary)', lineHeight: 1.5,
+            padding: '8px 12px', background: 'var(--bg-elevated)',
+            border: '1px solid var(--bd-subtle)', borderRadius: 'var(--rx-sm)',
+          }}>
+            <b>Not:</b> Üstteki metriklerin ana değeri <b>tüm {summary.n ?? 0} istasyonu</b> kapsar
+            (gerçek = 0 dahil); alt satırdaki "Aktif" değeri sadece o gün şarj olan{' '}
+            <b>{activeMetrics?.n ?? 0} istasyon</b> üzerinden hesaplanır. Aşağıdaki scatter,
+            histogram ve en isabetli/hatalı tablolar yalnızca aktif istasyonları gösterir.
+            <br />
+            <b>MAE / Bias</b> "Kaynak Gün" karşılaştırması = o günden önce hesaplanan son güne
+            ait utilization tahmininin hatası.{' '}
+            <b>R²</b> tanımı gereği baseline'ı <b>ortalama ȳ</b>'dir; "Kaynak Gün R²" ise kaynak
+            günün ȳ baseline'a göre açıklama gücüdür (negatifse ȳ'den bile kötü).
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
             <ChartCard title="Tahmin vs Gerçek — istasyon dağılımı">
-              <ScatterPredVsActual rows={stations} />
+              <ScatterPredVsActual rows={activeStations} />
             </ChartCard>
             <ChartCard title="Hata Dağılımı (tahmin − gerçek)">
-              <ErrorHistogram rows={stations} />
+              <ErrorHistogram rows={activeStations} />
             </ChartCard>
           </div>
-          <ChartCard title={`Şehir Bazında MAE — model vs naive (en yoğun ${15} şehir)`}>
+          <ChartCard title={`Şehir Bazında MAE — model vs kaynak gün (en yoğun ${15} şehir)`}>
             <CityBreakdown summary={summary} />
           </ChartCard>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <BestStationsTable rows={stations} />
-            <WorstStationsTable rows={stations} />
+            <BestStationsTable rows={activeStations} />
+            <WorstStationsTable rows={activeStations} />
           </div>
-          <ChartCard title="Tüm Tarihler — MAE Trendi (Model vs Naive)">
+          <ChartCard title="Tüm Tarihler — MAE Trendi (Model vs Kaynak Gün)">
             <TrendStrip trend={trend} selectedDate={date} onSelect={onDateChange} />
           </ChartCard>
         </>
-      )}
+        );
+      })()}
     </div>
   );
 }
 
 /* ── KPI Cards ─────────────────────────────────────────────────────── */
-function KpiRow({ summary }) {
-  const m = summary.model || {};
-  const n = summary.naive || {};
-  const imp = summary.improvement_pct_vs_naive ?? 0;
+function KpiRow({ summary, activeMetrics }) {
+  const m  = summary.model || {};
+  const n  = summary.naive || {};
+  const am = activeMetrics?.model || {};
+  const an = activeMetrics?.naive || {};
+  const imp     = summary.improvement_pct_vs_naive ?? 0;
+  const impAct  = an.mae > 0 ? (an.mae - am.mae) / an.mae * 100 : 0;
+
+  const subLines = (allLabel, allVal, activeVal) => (
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <span>{allLabel}: {allVal}</span>
+      <span>Aktif: {activeVal}</span>
+    </span>
+  );
+
   return (
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-      <MetricCard label="İstasyon" value={(summary.n ?? 0).toLocaleString()} />
+      <MetricCard
+        label="İstasyon"
+        value={(summary.n ?? 0).toLocaleString()}
+        sub={`Aktif: ${(activeMetrics?.n ?? 0).toLocaleString()}`}
+      />
       <MetricCard
         label="MAE — Model"
         value={`${m.mae?.toFixed(2) ?? '—'} pp`}
-        sub={`Naive: ${n.mae?.toFixed(2) ?? '—'}`}
+        sub={subLines('Kaynak Gün', `${n.mae?.toFixed(2) ?? '—'}`, `${am.mae?.toFixed(2) ?? '—'} pp (Kaynak ${an.mae?.toFixed(2) ?? '—'})`)}
       />
       <MetricCard
-        label="İyileşme (Model vs Naive)"
+        label="İyileşme (Model vs Kaynak Gün)"
         value={`${imp > 0 ? '+' : ''}${imp.toFixed(1)}%`}
         color={imp > 0 ? COLOR_GOOD : COLOR_BAD}
+        sub={`Aktif: ${impAct > 0 ? '+' : ''}${impAct.toFixed(1)}%`}
       />
       <MetricCard
-        label="R² — Model"
+        label="R² — Model (baz: ortalama ȳ)"
         value={m.r2?.toFixed(3) ?? '—'}
-        sub={`Naive: ${n.r2?.toFixed(3) ?? '—'}`}
+        sub={subLines('Kaynak Gün (ȳ baz)', `${n.r2?.toFixed(3) ?? '—'}`, `${am.r2?.toFixed(3) ?? '—'} (Kaynak ${an.r2?.toFixed(3) ?? '—'})`)}
       />
       <MetricCard
         label="Bias — Model"
         value={`${(m.bias ?? 0) > 0 ? '+' : ''}${m.bias?.toFixed(2) ?? '—'} pp`}
-        sub={(m.bias ?? 0) > 0 ? 'Sistematik fazla tahmin' : 'Sistematik az tahmin'}
+        sub={
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span>{(m.bias ?? 0) > 0 ? 'Sistematik fazla tahmin' : 'Sistematik az tahmin'}</span>
+            <span>Aktif: {(am.bias ?? 0) > 0 ? '+' : ''}{am.bias?.toFixed(2) ?? '—'} pp</span>
+          </span>
+        }
       />
     </div>
   );
@@ -259,7 +336,7 @@ function CityBreakdown({ summary }) {
           {...TOOLTIP_STYLE}
         />
         <Legend wrapperStyle={{ fontSize: 11, color: 'var(--tx-tertiary)' }} />
-        <Bar dataKey="mae_naive" name="Naive MAE" fill={COLOR_NAIVE} radius={[0, 3, 3, 0]} />
+        <Bar dataKey="mae_naive" name="Kaynak Gün MAE" fill={COLOR_NAIVE} radius={[0, 3, 3, 0]} />
         <Bar dataKey="mae_model" name="Model MAE" fill={COLOR_MODEL} radius={[0, 3, 3, 0]} />
       </BarChart>
     </ResponsiveContainer>
@@ -345,7 +422,7 @@ function TrendStrip({ trend, selectedDate, onSelect }) {
         />
         <Legend wrapperStyle={{ fontSize: 11, color: 'var(--tx-tertiary)' }} />
         {selectedDate && <ReferenceLine x={selectedDate} stroke={COLOR_MODEL} strokeDasharray="3 3" />}
-        <Line type="monotone" dataKey="mae_naive" name="Naive" stroke={COLOR_NAIVE} strokeWidth={1.5} dot={{ r: 3 }} />
+        <Line type="monotone" dataKey="mae_naive" name="Kaynak Gün" stroke={COLOR_NAIVE} strokeWidth={1.5} dot={{ r: 3 }} />
         <Line type="monotone" dataKey="mae_model" name="Model" stroke={COLOR_MODEL} strokeWidth={2} dot={{ r: 4 }} />
       </LineChart>
     </ResponsiveContainer>

@@ -24,7 +24,7 @@ const ZES_TABS = [
   { id: 'zes-search',      label: 'Soket Ara',            icon: '🔍' },
   { id: 'zes-performance', label: 'İstasyon Performansı', icon: '⚡' },
   { id: 'zes-city',        label: 'Şehir Analizi',        icon: '🗺️' },
-  { id: 'zes-opportunity', label: 'Büyüme Fırsatı',       icon: '🌱' },
+  { id: 'zes-opportunity', label: 'İstasyon Profili',     icon: '🌱' },
   { id: 'zes-prediction',  label: 'Tahmin',                icon: '🔮' },
   { id: 'zes-pricing',     label: 'Dinamik Fiyat',         icon: '💸' },
   { id: 'zes-backtest',    label: 'Doğrulama',             icon: '🎯' },

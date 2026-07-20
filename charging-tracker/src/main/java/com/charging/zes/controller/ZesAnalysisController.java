@@ -428,49 +428,30 @@ public class ZesAnalysisController {
         return forecastService.availableDates();
     }
 
-    // ── Dynamic pricing (zes_station_pricing-{date}) ─────────────────────────
+    // ── İstasyon-bazlı dinamik fiyatlandırma ─────────────────────────────────
+    // Karar artık kullanıcıda (saat-bantları + manuel indirim); gelir tarayıcıda
+    // (pricingModel.js) hesaplanır. Backend yalnızca veri + varsayım sunar.
 
-    /** GET /zes/availability/pricing/summary?date= — gelir artışı (± bant), PAR düşüşü. */
-    @GetMapping("/pricing/summary")
-    public Map<String, Object> pricingSummary(
-            @RequestParam(name = "date", required = false) String date) throws IOException {
-        return pricingService.summary(date);
+    /** GET /zes/availability/pricing/config — ekonomik varsayımlar (taban fiyat, η, U_CAP …). */
+    @GetMapping("/pricing/config")
+    public Map<String, Object> pricingConfig() {
+        return pricingService.config();
     }
 
-    /** GET /zes/availability/pricing/recommendations?date=&from=&size=&city=&segment=&sort=&order= */
-    @GetMapping("/pricing/recommendations")
-    public Map<String, Object> pricingRecommendations(
-            @RequestParam(name = "date", required = false) String date,
-            @RequestParam(name = "from", required = false) Integer from,
-            @RequestParam(name = "size", required = false) Integer size,
-            @RequestParam(name = "city", required = false) String city,
-            @RequestParam(name = "segment", required = false) String segment,
-            @RequestParam(name = "sort", required = false) String sort,
-            @RequestParam(name = "order", required = false) String order) throws IOException {
-        return pricingService.recommendations(date, from, size, city, segment, sort, order);
-    }
-
-    /** GET /zes/availability/pricing/heatmap?date=&segment= — şehir × saat indirim ısı haritası. */
-    @GetMapping("/pricing/heatmap")
-    public List<Map<String, Object>> pricingHeatmap(
-            @RequestParam(name = "date", required = false) String date,
-            @RequestParam(name = "segment", required = false) String segment) throws IOException {
-        return pricingService.heatmap(date, segment);
-    }
-
-    /** GET /zes/availability/pricing/city?date= — harita rollup (her iki segment). */
-    @GetMapping("/pricing/city")
-    public List<Map<String, Object>> pricingCity(
-            @RequestParam(name = "date", required = false) String date) throws IOException {
-        return pricingService.city(date);
-    }
-
-    /** GET /zes/availability/pricing/station?date=&stationId= — tek istasyon kırılımı. */
-    @GetMapping("/pricing/station")
-    public List<Map<String, Object>> pricingStation(
+    /** GET /zes/availability/pricing/station-forecast?date=&stationId= — hedef tarih saatlik forecast (her segment). */
+    @GetMapping("/pricing/station-forecast")
+    public List<Map<String, Object>> pricingStationForecast(
             @RequestParam(name = "date", required = false) String date,
             @RequestParam(name = "stationId") String stationId) throws IOException {
-        return pricingService.station(date, stationId);
+        return pricingService.stationForecast(date, stationId);
+    }
+
+    /** GET /zes/availability/pricing/station-history?stationId=&days= — son N günlük gözlenen doluluk. */
+    @GetMapping("/pricing/station-history")
+    public List<Map<String, Object>> pricingStationHistory(
+            @RequestParam(name = "stationId") String stationId,
+            @RequestParam(name = "days", required = false) Integer days) throws IOException {
+        return pricingService.stationHistory(stationId, days);
     }
 
     @GetMapping("/pricing/available-dates")

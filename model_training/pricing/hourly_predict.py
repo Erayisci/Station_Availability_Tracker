@@ -9,7 +9,7 @@ and power come from the most recent observed hourly-performance snapshot, which
 also defines which (station, segment) cells exist.
 
 Output index: zes_station_hourly_forecast-{date} — one doc per (station, segment),
-the baseline that the pricing optimizer consumes.
+the baseline the station pricing page reads (forecast curve + revenue sim base).
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from . import pricing_config as pc
 from . import profile as prof
 from .hourly_data_builder import (
     HOURLY_PERF_PREFIX, build_hourly_performance, fetch_hourly_performance,
-    list_hourly_perf_dates,
+    list_hourly_perf_dates, _load_nearby_counts,
 )
 
 HOURLY_FORECAST_PREFIX = "zes_station_hourly_forecast"
@@ -45,6 +45,7 @@ INDEX_MAPPING = {
             "forecast_for_date": {"type": "date"},
             "source_date":       {"type": "date"},
             "connector_count":   {"type": "integer"},
+            "nearby_stations_count": {"type": "integer"},
             "avg_power_kw":      {"type": "float"},
             "daily_predicted_pct": {"type": "float"},
             "hourly_predicted_pct": {"type": "float"},  # array[24]
@@ -118,6 +119,10 @@ def predict_hourly(target_date: date, client: Optional[Elasticsearch] = None,
         return {"error": f"hourly performance snapshot {snap} is empty"}
 
     profiles = prof.build_profiles(target_date, lookback_days=lookback_days, client=client)
+    # Geo signal sourced directly from the authoritative station-performance
+    # index (per target_date), so it does not depend on whether the hourly
+    # snapshot was rebuilt with the field.
+    nearby_counts = _load_nearby_counts(client, target_date)
 
     index_name = f"{HOURLY_FORECAST_PREFIX}-{target_date.isoformat()}"
     _ensure_index(client, index_name)
@@ -144,6 +149,7 @@ def predict_hourly(target_date: date, client: Optional[Elasticsearch] = None,
                 "forecast_for_date": target_date.isoformat(),
                 "source_date": snap.isoformat(),
                 "connector_count": int(r.get("connector_count") or 0),
+                "nearby_stations_count": nearby_counts.get(sid),
                 "avg_power_kw": float(r.get("avg_power_kw") or pc.FALLBACK_POWER_KW[seg]),
                 "daily_predicted_pct": round(daily_pred, 2),
                 "hourly_predicted_pct": [round(float(x), 2) for x in hourly],

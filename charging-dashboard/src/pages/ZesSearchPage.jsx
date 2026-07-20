@@ -245,8 +245,22 @@ export default function ZesSearchPage({ date, onDateChange }) {
             </div>
             <div className="filter-field">
               <label>Saat</label>
-              <input type="time" value={filters.time} step="60"
-                onChange={e => set('time', e.target.value)} onKeyDown={handleKeyDown} />
+              <input
+                type="text"
+                value={filters.time}
+                placeholder="HH:MM"
+                inputMode="numeric"
+                maxLength={5}
+                pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                title="24 saat formatı (00:00 – 23:59)"
+                onChange={e => {
+                  // Allow only digits + auto-insert ":" after 2 chars
+                  let v = e.target.value.replace(/[^0-9:]/g, '');
+                  if (v.length === 2 && !v.includes(':') && filters.time.length < 2) v += ':';
+                  set('time', v.slice(0, 5));
+                }}
+                onKeyDown={handleKeyDown}
+                style={{ fontFamily: 'var(--font-mono)' }} />
             </div>
             <div className="filter-field">
               <label>İl</label>

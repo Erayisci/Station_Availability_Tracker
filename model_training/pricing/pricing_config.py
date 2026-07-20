@@ -47,16 +47,7 @@ D_MAX = 0.20
 # (this is what produces interior optima — see demand_model.py).
 # ---------------------------------------------------------------------------
 U_CAP = 95.0            # effective utilization ceiling (%), leaves headroom
-BUSY_THRESHOLD = 80.0   # cells at/above this util get d=0 (no discount when busy)
-
-# ---------------------------------------------------------------------------
-# Optimizer trade-off.
-#   objective = Σ revenue + GAMMA · distribution_benefit
-# GAMMA is expressed in ₺-equivalent per unit of variance reduction, so the
-# revenue↔evenness trade-off is interpretable. Sweep it for a frontier.
-# ---------------------------------------------------------------------------
-GAMMA = 0.0             # default: pure revenue. UI/sweep raises it for evenness.
-SMOOTHNESS_MAX_STEP = 0.10  # max |d[h] - d[h-1]| across adjacent hours
+BUSY_THRESHOLD = 80.0   # advisory: stations at/above this util shouldn't be discounted
 
 # ---------------------------------------------------------------------------
 # Urban / rural split (drives elasticity geo multiplier). Based on

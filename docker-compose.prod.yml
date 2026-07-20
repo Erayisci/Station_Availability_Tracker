@@ -1,0 +1,62 @@
+# Production stack — single always-on VM (GCE) running the full ZES platform.
+# Only `web` (nginx) publishes a host port; everything else stays on the private network.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+services:
+  elasticsearch:
+    image: elasticsearch:8.13.4
+    container_name: es
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  tracker:
+    build: ./charging-tracker
+    container_name: tracker
+    restart: unless-stopped
+    environment:
+      - ELASTICSEARCH_HOST=elasticsearch
+      - ELASTICSEARCH_PORT=9200
+      - ASTOR_API_AUTHORIZATION=${ASTOR_API_AUTHORIZATION:-}
+    volumes:
+      - tracker_data:/app/data
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  pricing:
+    build: ./model_training
+    container_name: pricing
+    restart: unless-stopped
+    environment:
+      - ES_HOST=http://elasticsearch:9200
+    volumes:
+      - ml_models:/app/models
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  web:
+    build: ./charging-dashboard
+    container_name: web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - tracker
+      - pricing
+
+volumes:
+  es_data:
+  tracker_data:
+  ml_models:

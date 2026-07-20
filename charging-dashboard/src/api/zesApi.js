@@ -179,31 +179,22 @@ export function fetchForecastAvailableDates() {
   return fetchJson(`${BASE}/forecast/available-dates`);
 }
 
-// ── Dynamic pricing (zes_station_pricing-{date}) ───────────────────────────
+// ── İstasyon-bazlı dinamik fiyatlandırma ───────────────────────────────────
+// Karar kullanıcıda (saat-bantları + manuel indirim); gelir tarayıcıda
+// (pricingModel.js) hesaplanır. Backend yalnızca veri + varsayım sunar.
 
-export function fetchPricingSummary({ date } = {}) {
-  const q = toQuery({ date });
-  return fetchJson(`${BASE}/pricing/summary${q ? '?' + q : ''}`);
+export function fetchPricingConfig() {
+  return fetchJson(`${BASE}/pricing/config`);
 }
 
-export function fetchPricingRecommendations({ date, from = 0, size = 20, city, segment, sort = 'uplift', order = 'desc' } = {}) {
-  const q = toQuery({ date, from, size, city, segment, sort, order });
-  return fetchJson(`${BASE}/pricing/recommendations${q ? '?' + q : ''}`);
-}
-
-export function fetchPricingHeatmap({ date, segment = 'DC' } = {}) {
-  const q = toQuery({ date, segment });
-  return fetchJson(`${BASE}/pricing/heatmap${q ? '?' + q : ''}`);
-}
-
-export function fetchPricingCity({ date } = {}) {
-  const q = toQuery({ date });
-  return fetchJson(`${BASE}/pricing/city${q ? '?' + q : ''}`);
-}
-
-export function fetchPricingStation({ date, stationId } = {}) {
+export function fetchPricingStationForecast({ date, stationId } = {}) {
   const q = toQuery({ date, stationId });
-  return fetchJson(`${BASE}/pricing/station${q ? '?' + q : ''}`);
+  return fetchJson(`${BASE}/pricing/station-forecast${q ? '?' + q : ''}`);
+}
+
+export function fetchPricingStationHistory({ stationId, days = 14 } = {}) {
+  const q = toQuery({ stationId, days });
+  return fetchJson(`${BASE}/pricing/station-history${q ? '?' + q : ''}`);
 }
 
 export function fetchPricingAvailableDates() {

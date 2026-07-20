@@ -1,5 +1,7 @@
 package com.charging.zes.elastic;
 
+import com.charging.elastic.EsConfig;
+
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.BulkRequest;
 import co.elastic.clients.elasticsearch.core.BulkResponse;
@@ -52,7 +54,7 @@ public class ZesStationPerformanceIndexService {
     private ZesApiClient zesApiClient;
 
     public ZesStationPerformanceIndexService() {
-        restClient = RestClient.builder(new HttpHost("localhost", 9200)).build();
+        restClient = RestClient.builder(EsConfig.host()).build();
         RestClientTransport transport = new RestClientTransport(restClient, new JacksonJsonpMapper());
         client = new ElasticsearchClient(transport);
     }

@@ -1,20 +1,28 @@
-"""Dynamic pricing phase.
+"""Dynamic pricing phase — STATION-level, human-in-the-loop.
 
-Builds on the daily utilization forecast to:
-  1. disaggregate predictions to hourly + city granularity (profile.py,
-     hourly_data_builder.py, hourly_predict.py, city_predict.py),
-  2. model demand response to discounts under EPDK "discount-only" rules
-     (elasticity.py, demand_model.py),
-  3. optimize discounts for revenue + even utilization (optimize.py),
-  4. backtest the policy against the non-discounted baseline (backtest.py).
+The pricing DECISION is not optimized server-side. The dashboard lets the user
+inspect a station's history, set per-hour-band discounts, and simulate revenue
+in the browser (charging-dashboard/src/lib/pricingModel.js — a JS port of
+demand_model.py + elasticity.py). This package only produces the per-station
+DATA the page reads, plus the economic assumptions it mirrors:
 
-Design note: like opportunity.py and forecast/predict.py, every computed
-index in this package is WRITTEN from Python. The Java side (ZesPricingService)
-is a pure reader. The observed hourly index is built here too, reusing the
-slot-splitting convention from extract.py / ZesConnectorTransformAnalysisService.
+  1. observed hourly utilization   — hourly_data_builder.py
+                                      → zes_station_hourly_performance-{date}
+  2. hourly per-segment forecast   — profile.py + hourly_predict.py
+                                      → zes_station_hourly_forecast-{date}
+  3. demand/revenue + elasticity   — demand_model.py + elasticity.py
+                                      (canonical spec; mirrored by Java
+                                       /pricing/config and the JS port)
+
+Design note: like opportunity.py and forecast/predict.py, every computed index
+here is WRITTEN from Python; the Java side (ZesPricingService) is a pure reader
+that also serves the economic assumptions via /pricing/config.
 
 CRITICAL ASSUMPTION: there is no historical price variation in the data, so
 price elasticity cannot be fitted. It is an exogenous, segment-specific
-parameter (see elasticity.py). Every pricing output ships with a low/central/
-high sensitivity band — never a single number.
+parameter (see elasticity.py). Every revenue figure is a SIMULATION and ships
+with a low/central/high sensitivity band — never a single number.
+
+Removed (2026-06-25): the city-level optimizer (optimize.py), city aggregation
+(city_predict.py) and policy backtest (backtest.py). Decision moved to the user.
 """

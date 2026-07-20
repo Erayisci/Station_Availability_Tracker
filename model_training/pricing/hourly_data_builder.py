@@ -30,6 +30,8 @@ from . import pricing_config as pc
 
 HOURLY_PERF_PREFIX = "zes_station_hourly_performance"
 SOURCE_PREFIX = "zes_connector_transform"
+# Per-station geographic signal (local substitute density) for elasticity.
+STATION_PERF_PREFIX = "zes_station_performance"
 
 INDEX_MAPPING = {
     "mappings": {
@@ -44,6 +46,7 @@ INDEX_MAPPING = {
             "location":          {"type": "geo_point"},
             "analysis_date":     {"type": "date"},
             "connector_count":   {"type": "integer"},
+            "nearby_stations_count": {"type": "integer"},  # local substitute density
             "avg_power_kw":      {"type": "float"},
             "hourly_utilization_pct":  {"type": "float"},  # array[24]
             "hourly_charging_minutes": {"type": "float"},  # array[24]
@@ -63,6 +66,36 @@ def _ensure_index(client: Elasticsearch, name: str) -> None:
 
 def _source_index(d: date) -> str:
     return f"{SOURCE_PREFIX}-{d.isoformat()}"
+
+
+def _load_nearby_counts(client: Elasticsearch, target_date: date) -> dict[str, int]:
+    """Map station_id -> nearby_stations_count from the best station-performance
+    snapshot on/before target_date. Returns {} if no snapshot exists; stations
+    missing from the result fall back to rural in the elasticity model.
+    """
+    resp = client.cat.indices(index=f"{STATION_PERF_PREFIX}-*", h="index", format="json")
+    dates = []
+    for row in resp:
+        name = row["index"]
+        if not name.startswith(STATION_PERF_PREFIX + "-"):
+            continue
+        try:
+            dates.append(date.fromisoformat(name.split("-", 1)[1]))
+        except (ValueError, IndexError):
+            continue
+    if not dates:
+        return {}
+    candidates = [d for d in dates if d <= target_date] or dates
+    src = f"{STATION_PERF_PREFIX}-{max(candidates).isoformat()}"
+    out: dict[str, int] = {}
+    for hit in scan(client, index=src, query={"query": {"match_all": {}}},
+                    _source=["station_id", "nearby_stations_count"], size=1000):
+        s = hit["_source"]
+        sid = s.get("station_id")
+        nb = s.get("nearby_stations_count")
+        if sid is not None and nb is not None:
+            out[sid] = int(nb)
+    return out
 
 
 def list_hourly_perf_dates(client: Elasticsearch) -> list[date]:
@@ -148,6 +181,8 @@ def build_hourly_performance(target_date: date, client: Optional[Elasticsearch] 
     if not agg:
         return {"error": f"no usable connector docs in {src_idx}"}
 
+    nearby_counts = _load_nearby_counts(client, target_date)
+
     index_name = f"{HOURLY_PERF_PREFIX}-{target_date.isoformat()}"
     _ensure_index(client, index_name)
     computed_at = datetime.utcnow().isoformat() + "Z"
@@ -173,6 +208,7 @@ def build_hourly_performance(target_date: date, client: Optional[Elasticsearch] 
                 "lat": rec["lat"], "lng": rec["lng"],
                 "analysis_date": target_date.isoformat(),
                 "connector_count": n_conn,
+                "nearby_stations_count": nearby_counts.get(sid),
                 "avg_power_kw": round(float(avg_power), 2),
                 "hourly_utilization_pct": hourly_pct,
                 "hourly_charging_minutes": [round(cm, 1) for cm in rec["charging_min"]],
