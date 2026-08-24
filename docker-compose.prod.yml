@@ -1,5 +1,7 @@
-# Production stack — single always-on VM (GCE) running the full ZES platform.
-# Only `web` (nginx) publishes a host port; everything else stays on the private network.
+# Production stack — single always-on VM (Hetzner CX22, 2 vCPU / 4 GB) running the
+# full ZES platform. Heap ceilings are sized for 4 GB: ES 768m + core-api 768m +
+# intelligence (~500m) + nginx leaves headroom for the OS. See DEPLOY.md § swap.
+# Only `console` (nginx) publishes a host port; everything else stays on the private network.
 #
 #   docker compose -f docker-compose.prod.yml up -d --build
 #
@@ -11,7 +13,7 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - ES_JAVA_OPTS=-Xms768m -Xmx768m
     volumes:
       - es_data:/usr/share/elasticsearch/data
     healthcheck:
@@ -20,23 +22,22 @@ services:
       timeout: 10s
       retries: 10
 
-  tracker:
-    build: ./charging-tracker
-    container_name: tracker
+  core-api:
+    build: ./core-api
+    container_name: core-api
     restart: unless-stopped
     environment:
       - ELASTICSEARCH_HOST=elasticsearch
       - ELASTICSEARCH_PORT=9200
-      - ASTOR_API_AUTHORIZATION=${ASTOR_API_AUTHORIZATION:-}
     volumes:
-      - tracker_data:/app/data
+      - core_api_data:/app/data
     depends_on:
       elasticsearch:
         condition: service_healthy
 
-  pricing:
-    build: ./model_training
-    container_name: pricing
+  intelligence:
+    build: ./intelligence
+    container_name: intelligence
     restart: unless-stopped
     environment:
       - ES_HOST=http://elasticsearch:9200
@@ -46,17 +47,17 @@ services:
       elasticsearch:
         condition: service_healthy
 
-  web:
-    build: ./charging-dashboard
-    container_name: web
+  console:
+    build: ./console
+    container_name: console
     restart: unless-stopped
     ports:
       - "80:80"
     depends_on:
-      - tracker
-      - pricing
+      - core-api
+      - intelligence
 
 volumes:
   es_data:
-  tracker_data:
+  core_api_data:
   ml_models:

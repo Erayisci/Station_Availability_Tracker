@@ -38,6 +38,7 @@ pnpm-debug.log*
 # ========================
 dist/
 dist-ssr/
+.vite/
 *.local
 
 # ========================
@@ -71,3 +72,12 @@ desktop.ini
 # ========================
 *.log
 logs/
+
+# ========================
+# Python
+# ========================
+# (intelligence/.gitignore also covers venv/, models/ and reports/ locally)
+__pycache__/
+*.py[cod]
+venv/
+.venv/
