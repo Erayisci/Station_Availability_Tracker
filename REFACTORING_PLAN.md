@@ -112,8 +112,8 @@
 **Adımlar**:
 ```bash
 # Frontend'de kullanılan endpoint'leri bul
-grep -r "zes/availability" charging-dashboard/src/**/*.jsx
-grep -r "station-performance" charging-dashboard/src/**/*.jsx
+grep -r "zes/availability" console/src/**/*.jsx
+grep -r "station-performance" console/src/**/*.jsx
 ```
 
 **Çıktı**: Kullanılmayan endpoint'lerin listesi
@@ -342,7 +342,7 @@ public Map<String, Object> backfillPerformanceIndex(
 
 ##### Frontend UI Component
 ```jsx
-// charging-dashboard/src/pages/ZesPerformancePage.jsx
+// console/src/pages/ZesPerformancePage.jsx
 
 import React, { useState } from 'react';
 
