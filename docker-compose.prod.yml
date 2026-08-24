@@ -1,0 +1,63 @@
+# Production stack — single always-on VM (Hetzner CX22, 2 vCPU / 4 GB) running the
+# full ZES platform. Heap ceilings are sized for 4 GB: ES 768m + core-api 768m +
+# intelligence (~500m) + nginx leaves headroom for the OS. See DEPLOY.md § swap.
+# Only `console` (nginx) publishes a host port; everything else stays on the private network.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+services:
+  elasticsearch:
+    image: elasticsearch:8.13.4
+    container_name: es
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms768m -Xmx768m
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  core-api:
+    build: ./core-api
+    container_name: core-api
+    restart: unless-stopped
+    environment:
+      - ELASTICSEARCH_HOST=elasticsearch
+      - ELASTICSEARCH_PORT=9200
+    volumes:
+      - core_api_data:/app/data
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  intelligence:
+    build: ./intelligence
+    container_name: intelligence
+    restart: unless-stopped
+    environment:
+      - ES_HOST=http://elasticsearch:9200
+    volumes:
+      - ml_models:/app/models
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  console:
+    build: ./console
+    container_name: console
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - core-api
+      - intelligence
+
+volumes:
+  es_data:
+  core_api_data:
+  ml_models:

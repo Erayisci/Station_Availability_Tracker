@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn -B -o clean compile)",
+      "Bash(npm run *)",
+      "Bash(venv/bin/python -c ' *)",
+      "Bash(venv/bin/python -m pricing.test_demand_model)",
+      "Bash(docker compose *)",
+      "Bash(git add *)",
+      "Bash(grep -E \"target/|node_modules/|dist/|__pycache__|\\\\.vite/|venv/|\\\\.class$|\\\\.pyc$\")",
+      "Bash(git rm *)",
+      "Bash(grep -cE \"target/|node_modules/|dist/|__pycache__|\\\\.vite/|venv/|\\\\.class$|\\\\.pyc$\")",
+      "Bash(npm ci *)",
+      "Bash(mvn -B -o clean package -DskipTests)",
+      "Bash(venv/bin/python -c \"import app; print\\('app imports OK —', app.app.title\\)\")",
+      "Bash(xargs -I{} sh -c 'echo \"$\\(grep -c \"zes\\\\|Zes\\\\|ZES\" {}\\) {}\"')",
+      "Bash(mvn -B -q compile)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(awk '{s+=$1} END {print s\" mapping annotations\"}')",
+      "Bash(echo \"COMPILE EXIT=$?\")",
+      "Bash(curl -s -m 3 localhost:9200)",
+      "Bash(curl -s 'localhost:9200/_cat/indices/zes_*?h=index,docs.count&s=index')",
+      "Bash(python3 dump_index.py zes_connector_transform-2026-08-13 before_transform.tsv)",
+      "Bash(break)",
+      "Bash(python3 dump_sources.py zes_stations-2026-08-13 stations.jsonl)",
+      "Bash(mvn -B -q dependency:build-classpath -Dmdep.outputFile=/tmp/claude-1000/-home-erayisci-Desktop-Charging-Scripts/8d41f86e-eef6-4bb1-8402-58e0a14eab7f/scratchpad/cp.txt)",
+      "Bash(java -cp target/classes:__CMDSUB_OUTPUT__ /tmp/claude-1000/-home-erayisci-Desktop-Charging-Scripts/8d41f86e-eef6-4bb1-8402-58e0a14eab7f/scratchpad/VerifyTransform.java /tmp/claude-1000/-home-erayisci-Desktop-Charging-Scripts/8d41f86e-eef6-4bb1-8402-58e0a14eab7f/scratchpad/stations.jsonl /tmp/claude-1000/-home-erayisci-Desktop-Charging-Scripts/8d41f86e-eef6-4bb1-8402-58e0a14eab7f/scratchpad/after_transform_raw.tsv)",
+      "Bash(python3 compare.py before_transform.tsv after_transform_raw.tsv)",
+      "Bash(java -cp target/classes:__CMDSUB_OUTPUT__ /tmp/claude-1000/-home-erayisci-Desktop-Charging-Scripts/8d41f86e-eef6-4bb1-8402-58e0a14eab7f/scratchpad/VerifyTransform.java /tmp/claude-1000/-home-erayisci-Desktop-Charging-Scripts/8d41f86e-eef6-4bb1-8402-58e0a14eab7f/scratchpad/stations.jsonl /tmp/claude-1000/-home-erayisci-Desktop-Charging-Scripts/8d41f86e-eef6-4bb1-8402-58e0a14eab7f/scratchpad/after_transform.tsv)",
+      "Bash(python3 /tmp/claude-1000/-home-erayisci-Desktop-Charging-Scripts/8d41f86e-eef6-4bb1-8402-58e0a14eab7f/scratchpad/compare.py /tmp/claude-1000/-home-erayisci-Desktop-Charging-Scripts/8d41f86e-eef6-4bb1-8402-58e0a14eab7f/scratchpad/before_transform.tsv /tmp/claude-1000/-home-erayisci-Desktop-Charging-Scripts/8d41f86e-eef6-4bb1-8402-58e0a14eab7f/scratchpad/after_transform.tsv)",
+      "Bash(java -cp /home/erayisci/Desktop/Charging_Scripts/core-api/target/classes:__CMDSUB_OUTPUT__ /tmp/claude-1000/-home-erayisci-Desktop-Charging-Scripts/8d41f86e-eef6-4bb1-8402-58e0a14eab7f/scratchpad/VerifyTransform.java /tmp/claude-1000/-home-erayisci-Desktop-Charging-Scripts/8d41f86e-eef6-4bb1-8402-58e0a14eab7f/scratchpad/stations.jsonl /tmp/claude-1000/-home-erayisci-Desktop-Charging-Scripts/8d41f86e-eef6-4bb1-8402-58e0a14eab7f/scratchpad/after_transform.tsv)",
+      "Bash(grep -vE '^\\\\s*$')",
+      "Bash(echo \"exit=$?\")",
+      "Bash(mvn -B -q clean compile)",
+      "Bash(echo \"JAVA COMPILE=$?\")"
+    ]
+  }
+}
